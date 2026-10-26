@@ -1,0 +1,18 @@
+name: Notify AI-Infra
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger AI-Infra Sync
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_PAT }}
+          repository: ${{ secrets.AI_INFRA_REPO }}
+          event-type: update-package
