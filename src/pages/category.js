@@ -4,200 +4,111 @@ import { updateDocument, deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
-import { renderTopTabs, renderViewToggle, bindViewToggle, renderOrders } from '../ui/order-view.js';
-import { groupByCategory } from '../domain/stats.js';
-import { createIcons, Layers, Activity, ClipboardList } from 'lucide';
+import { renderOrderView } from '../ui/order-view.js';
+import { createIcons } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
-let allCategories = [];
-let currentCategory = null;
-let currentView = 'card';
-let currentSchema = [];
+let schema = [];
+let viewConfig = {};
+let currentCategory = '';
 
 export default {
   async render() {
-    const user = AppState.getUser();
-    if (!user) return;
+    if (!AppState.getUser()) return;
 
-    // 1. 讀取系統設定（取得動態 Schema）
     try {
       const settingsDoc = await getDocument('settings', 'main');
-      if (settingsDoc && settingsDoc.schema) {
-        currentSchema = settingsDoc.schema;
+      if (settingsDoc) {
+        schema = settingsDoc.schema || [];
+        viewConfig = settingsDoc.view_configs || {};
       }
-    } catch (err) {
-      console.warn('無法讀取欄位設定，將以預設模式顯示', err);
-    }
+    } catch (err) {}
 
-    // 2. 渲染頁面骨架
     renderPageLayout({
       title: '類別視圖',
       subtitle: '依發票前兩碼檢視工單狀態',
-      headerActions: `
-        <div id="view-toggle-container">${renderViewToggle(currentView)}</div>
-      `,
-      stats: [],
+      headerActions: '',
       controls: `
-        <div id="top-tabs-container"></div>
+        <div id="category-tabs" class="flex items-center gap-2 overflow-x-auto pb-2 mb-2 kanban-scroll"></div>
       `,
       listContainerId: 'category-container'
     });
 
-    // 3. 綁定視圖切換
-    bindViewToggle((view) => {
-      currentView = view;
-      this.renderContent();
-    });
+    window.addEventListener('refresh-category', this.updateUI.bind(this));
 
-    createIcons({
-      icons: { Layers, Activity, ClipboardList },
-      attrs: { class: 'w-4 h-4' }
-    });
-
-    // 4. 初始化資料監聽
     this.initDataListener();
   },
 
   initDataListener() {
+    if (unsubscribe) unsubscribe();
     unsubscribe = listenCollection('work_orders', (orders) => {
       currentOrders = orders;
-      this.extractCategoriesAndRender();
+      // 如果第一次載入，自動選中第一個類別
+      if (!currentCategory) {
+        const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+        if (cats.length > 0) currentCategory = cats[0];
+      }
+      this.updateUI();
     });
-  },
-
-  extractCategoriesAndRender() {
-    const grouped = groupByCategory(currentOrders);
-    allCategories = Object.keys(grouped).sort();
-
-    // 預設選中第一個類別（若還沒選過或選中的被刪除了）
-    if (allCategories.length > 0 && (!currentCategory || !allCategories.includes(currentCategory))) {
-      currentCategory = allCategories[0];
-    }
-
-    this.updateUI();
   },
 
   updateUI() {
-    // 1. 更新頂部類別按鈕列
-    const grouped = groupByCategory(currentOrders);
-    const tabItems = allCategories.map(cat => ({
-      value: cat,
-      label: cat,
-      count: grouped[cat].length
-    }));
+    const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+    
+    // 若當前選中的類別不存在了，重置為第一個
+    if (cats.length > 0 && !cats.includes(currentCategory)) {
+      currentCategory = cats[0];
+    }
 
-    renderTopTabs('top-tabs-container', tabItems, currentCategory, (newCat) => {
-      currentCategory = newCat;
-      this.updateUI(); // 重新渲染按鈕狀態與內容
-    });
+    const tabsContainer = document.getElementById('category-tabs');
+    if (tabsContainer) {
+      tabsContainer.innerHTML = cats.map(c => `
+        <button class="whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium border ${c === currentCategory ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-cat="${c}">
+          ${c} <span class="ml-1 text-xs px-1.5 py-0.5 rounded-md ${c === currentCategory ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === c).length}</span>
+        </button>
+      `).join('');
 
-    // 2. 渲染工單內容
-    this.renderContent();
-  },
+      tabsContainer.querySelectorAll('button').forEach(btn => {
+        btn.onclick = () => { currentCategory = btn.dataset.cat; this.updateUI(); };
+      });
+    }
 
-  renderContent() {
     if (!currentCategory) return;
 
-    // 過濾出當前選中類別的工單
-    const filtered = currentOrders.filter(o => {
-      const cat = o.data && o.data.category ? o.data.category : '其他';
-      return cat === currentCategory;
-    });
+    const filtered = currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === currentCategory);
 
-    const user = AppState.getUser();
-    const isAdmin = user && user.role === 'admin';
-
-    renderOrders({
+    renderOrderView({
       containerId: 'category-container',
       orders: filtered,
-      viewType: currentView,
-      schema: currentSchema,
-      isAdmin: isAdmin,
-      onDelete: async (id) => {
-        const confirmed = await openConfirm({
-          title: '刪除工單',
-          message: `確定要徹底刪除工單「${id}」嗎？`,
-          isDanger: true,
-          confirmText: '確認刪除'
-        });
-        if (confirmed) {
-          await deleteDocument('work_orders', id);
-          showToast(`工單 ${id} 已刪除`, 'success');
-        }
-      },
-      onStatusChange: async (id) => {
-        const newStatus = window.prompt(`請輸入要流轉的狀態名稱（例如：印刷、裁切）：`);
-        if (newStatus && newStatus.trim()) {
-          const nowStr = new Date().toISOString();
-          await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: nowStr });
-          showToast(`工單 ${id} 已流轉至【${newStatus.trim()}】`, 'success');
+      visibleFields: schema.filter(f => (viewConfig['category'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      isAdmin: AppState.getUser()?.role === 'admin',
+      pageKey: 'category',
+      onAction: async (action, id) => {
+        if (action === 'delete') {
+          if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
+            await deleteDocument('work_orders', id);
+            showToast('已刪除', 'success');
+          }
+        } else if (action === 'flow') {
+          const newStatus = window.prompt('輸入目標狀態：');
+          if (newStatus) {
+            await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: new Date().toISOString() });
+            showToast('已流轉', 'success');
+          }
         }
       }
     });
-
-    // 為卡片視圖的流轉按鈕綁定事件
-    if (currentView === 'card' && isAdmin) {
-      const statuses = AppState.getStatuses() || [];
-      document.querySelectorAll('.status-options').forEach(container => {
-        const orderId = container.dataset.id;
-        const currentOrder = currentOrders.find(o => o.id === orderId);
-        if (!currentOrder) return;
-
-        const otherStatuses = statuses.filter(s => s !== currentOrder.status);
-        container.innerHTML = otherStatuses.map(s => `
-          <button class="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors btn-change-status" data-new-status="${s}">
-            移至 ${s}
-          </button>
-        `).join('');
-
-        container.querySelectorAll('.btn-change-status').forEach(btn => {
-          btn.addEventListener('click', async (e) => {
-            e.stopPropagation();
-            const newStatus = btn.dataset.newStatus;
-            btn.disabled = true;
-            btn.textContent = '處理中...';
-            try {
-              const nowStr = new Date().toISOString();
-              await updateDocument('work_orders', orderId, { status: newStatus, statusUpdateDate: nowStr });
-              showToast(`工單 ${orderId} 已流轉至【${newStatus}】`, 'success');
-            } catch (err) {
-              showToast('更新失敗', 'error');
-            }
-          });
-        });
-      });
-
-      // 綁定下拉選單的開關
-      document.querySelectorAll('.btn-dropdown').forEach(btn => {
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          const menu = btn.nextElementSibling;
-          document.querySelectorAll('.dropdown-menu').forEach(m => {
-            if (m !== menu) m.classList.add('hidden');
-          });
-          menu.classList.toggle('hidden');
-        });
-      });
-      document.addEventListener('click', () => {
-        document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.add('hidden'));
-      }, { once: true });
-    }
   },
 
   destroy() {
-    if (unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
-    currentOrders = [];
-    allCategories = [];
-    currentCategory = null;
+    if (unsubscribe) unsubscribe();
+    window.removeEventListener('refresh-category', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/category.js
-V: 1792913100
+V: 1792914200
 W: UPGRADE-002
 ═══ */
