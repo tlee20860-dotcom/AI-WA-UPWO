@@ -1,12 +1,12 @@
 import * as XLSX from 'xlsx';
 import { AppState } from '../config/state.js';
 import { listenDocument, getDocument, getCollection } from '../db/read.js';
-import { setDocument, updateDocument, deleteDocument } from '../db/write.js';
+import { setDocument, updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2 } from 'lucide';
+import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle } from 'lucide';
 
 let unsubscribe = null;
 let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [] };
@@ -67,7 +67,7 @@ export default {
       { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
       { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
       { key: 'amount', label: '金額', type: 'number', isSystem: false },
-      { key: 'category', label: '類別', type: 'string', isSystem: false },
+      { key: 'customCategory', label: '類別', type: 'string', isSystem: false },
       { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false },
       { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false }
     ];
@@ -200,12 +200,10 @@ export default {
         showToast('正在更新狀態與歷史資料...', 'info');
 
         try {
-          // 1. 更新記憶體中的設定
           const idx = currentSettings.statuses.indexOf(oldStatus);
           if (idx !== -1) currentSettings.statuses[idx] = trimmedNewStatus;
           await this.saveSettings();
 
-          // 2. 掃描並更新歷史工單
           const orders = await getCollection('work_orders');
           let updateCount = 0;
           for (const order of orders) {
@@ -292,7 +290,7 @@ export default {
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">銷售員對照表</h2>
-          <p class="text-sm text-slate-500 mt-1">設定別名，匯入時自動對應。新增後會自動同步更新歷史工單。</p>
+          <p class="text-sm text-slate-500 mt-1">設定別名，匯入時自動對應。修改後會自動同步歷史工單。</p>
         </div>
       </div>
 
@@ -312,6 +310,9 @@ export default {
             <div class="flex-1 flex flex-wrap gap-1">
               ${(rep.aliases || []).map(a => `<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${a}</span>`).join('')}
             </div>
+            <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-rep" data-index="${index}">
+              <i data-lucide="edit-2" class="w-4 h-4"></i>
+            </button>
             <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-rep" data-index="${index}">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
@@ -320,7 +321,7 @@ export default {
       </div>
     `;
 
-    createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
+    createIcons({ icons: { Plus, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
     document.getElementById('btn-add-rep')?.addEventListener('click', async () => {
       const name = document.getElementById('new-rep-name').value.trim();
@@ -332,13 +333,11 @@ export default {
       
       const aliases = aliasStr.split(',').map(s => s.trim()).filter(Boolean);
       
-      // 儲存對照表
       currentSettings.sales_mapping.push({ name, aliases });
       await this.saveSettings();
 
       showToast('正在同步歷史工單...', 'info');
 
-      // 同步更新歷史資料
       try {
         const orders = await getCollection('work_orders');
         let updateCount = 0;
@@ -349,8 +348,8 @@ export default {
           
           aliases.forEach(alias => {
             if (reps.includes(alias)) {
-              reps = reps.filter(r => r !== alias); // 移除別名
-              reps.push(name); // 加入正式名稱
+              reps = reps.filter(r => r !== alias);
+              reps.push(name);
               changed = true;
             }
           });
@@ -360,12 +359,65 @@ export default {
             updateCount++;
           }
         }
-        
         showToast(`新增成功，同步更新了 ${updateCount} 筆工單`, 'success');
       } catch (err) {
         console.error(err);
         showToast('對照表已新增，但同步歷史資料失敗', 'error');
       }
+    });
+
+    // 編輯對照表
+    document.querySelectorAll('.btn-edit-rep').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const idx = e.currentTarget.dataset.index;
+        const oldRep = currentSettings.sales_mapping[idx];
+        
+        const newName = window.prompt(`修改正式名稱（原為「${oldRep.name}」）：`, oldRep.name);
+        if (!newName || newName.trim() === "" || newName === oldRep.name) return;
+        const trimmedNewName = newName.trim();
+
+        const newAliasStr = window.prompt(`修改別名（原為「${(oldRep.aliases||[]).join(', ')}」，請用逗號隔開）：`, (oldRep.aliases||[]).join(', '));
+        if (newAliasStr === null) return; // 使用者按取消
+        const newAliases = newAliasStr.split(',').map(s => s.trim()).filter(Boolean);
+
+        showToast('正在更新設定與歷史資料...', 'info');
+
+        try {
+          currentSettings.sales_mapping[idx] = { name: trimmedNewName, aliases: newAliases };
+          await this.saveSettings();
+
+          // 同步歷史工單
+          const orders = await getCollection('work_orders');
+          let updateCount = 0;
+          for (const order of orders) {
+            let reps = order.salesReps || [];
+            let changed = false;
+            
+            // 如果包含舊名稱，或者包含舊別名，都替換成新名稱
+            if (reps.includes(oldRep.name)) {
+              reps = reps.filter(r => r !== oldRep.name);
+              reps.push(trimmedNewName);
+              changed = true;
+            }
+            (oldRep.aliases || []).forEach(alias => {
+              if (reps.includes(alias)) {
+                reps = reps.filter(r => r !== alias);
+                reps.push(trimmedNewName);
+                changed = true;
+              }
+            });
+
+            if (changed) {
+              await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
+              updateCount++;
+            }
+          }
+          showToast(`修改成功，同步更新了 ${updateCount} 筆工單`, 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('修改失敗，請稍後再試', 'error');
+        }
+      });
     });
 
     document.querySelectorAll('.btn-del-rep').forEach(btn => {
@@ -416,7 +468,10 @@ export default {
           <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
             <div class="w-1/3 font-bold text-slate-800">${f.label}</div>
             <div class="w-1/3 text-slate-500 font-mono text-xs">${f.key}</div>
-            <div class="w-1/3 text-right">
+            <div class="w-1/3 flex justify-end gap-2">
+              <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-field" data-key="${f.key}" data-label="${f.label}">
+                <i data-lucide="edit-2" class="w-4 h-4"></i>
+              </button>
               <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-field" data-key="${f.key}">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
               </button>
@@ -426,7 +481,7 @@ export default {
       </div>
     `;
 
-    createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
+    createIcons({ icons: { Plus, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
     document.getElementById('btn-add-field')?.addEventListener('click', async () => {
       const input = document.getElementById('new-field-label');
@@ -439,6 +494,23 @@ export default {
       currentSettings.schema.push({ key, label: val, type: 'string', isSystem: false });
       await this.saveSettings();
       showToast('新增成功', 'success');
+    });
+
+    document.querySelectorAll('.btn-edit-field').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const key = e.currentTarget.dataset.key;
+        const oldLabel = e.currentTarget.dataset.label;
+        const newLabel = window.prompt(`修改欄位名稱（原為「${oldLabel}」）：`, oldLabel);
+        
+        if (!newLabel || newLabel.trim() === "" || newLabel === oldLabel) return;
+        
+        const idx = currentSettings.schema.findIndex(f => f.key === key);
+        if (idx !== -1) {
+          currentSettings.schema[idx].label = newLabel.trim();
+          await this.saveSettings();
+          showToast('修改成功', 'success');
+        }
+      });
     });
 
     document.querySelectorAll('.btn-del-field').forEach(btn => {
@@ -571,7 +643,7 @@ export default {
           await updateDocument('work_orders', order.id, {
             salesReps: ["未填寫"],
             uploadDate: "",
-            data: { category: order.data?.category || '' } // 保留類別，或視情況清空
+            data: { category: order.data?.category || '' }
           });
           count++;
         }
@@ -671,6 +743,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792912300
+V: 1792912900
 W: UPGRADE-002
 ═══ */
