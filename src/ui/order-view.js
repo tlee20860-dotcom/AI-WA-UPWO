@@ -1,4 +1,4 @@
-import { createIcons, ChevronDown, User, Calendar, ArrowUpDown, ArrowUp, ArrowDown } from 'lucide';
+import { createIcons, ChevronDown, User, Calendar, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft } from 'lucide';
 
 /**
  * 將 Excel 日期序列號轉換為 YYYY-MM-DD 格式
@@ -348,6 +348,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792913500
+V: 1792913700
 W: UPGRADE-002
 ═══ */
