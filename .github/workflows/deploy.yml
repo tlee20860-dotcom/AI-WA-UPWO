@@ -1,9 +1,12 @@
 name: Deploy to Cloudflare Pages
 
 on:
-  push:
-    branches:
-      - main
+  workflow_dispatch: # 改為僅能手動觸發
+
+# 防止連續點擊觸發多次部署，節省資源
+concurrency:
+  group: "pages-deploy"
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -37,6 +40,6 @@ jobs:
 
 # ═══ EOF ═══
 # F: AI-WA-UPWO/.github/workflows/deploy.yml
-# V: 1792910100
+# V: 1792913400
 # W: UPGRADE-002
 # ═══
