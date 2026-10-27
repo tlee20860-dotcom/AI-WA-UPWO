@@ -32,12 +32,7 @@ export default {
       listContainerId: 'kanban-container'
     });
 
-    createIcons({
-      icons: { Upload },
-      attrs: { class: 'w-4 h-4' }
-    });
-
-    // 匯入按鈕事件
+    // 2. 優先綁定按鈕事件（避免 createIcons 發生錯誤時中斷）
     const btnImport = document.getElementById('btn-import-excel');
     const fileInput = document.getElementById('excel-import-input');
     
@@ -51,7 +46,13 @@ export default {
       });
     }
 
-    // 2. 初始化資料監聽
+    // 3. 渲染圖示
+    createIcons({
+      icons: { Upload },
+      attrs: { class: 'w-4 h-4' }
+    });
+
+    // 4. 初始化資料監聽
     this.initDataListener();
   },
 
@@ -335,6 +336,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792910200
+V: 1792910400
 W: UPGRADE-002
 ═══ */
