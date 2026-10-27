@@ -1,17 +1,17 @@
 import * as XLSX from 'xlsx';
 import { AppState } from '../config/state.js';
 import { listenDocument, getDocument, getCollection } from '../db/read.js';
-import { setDocument } from '../db/write.js';
+import { setDocument, updateDocument, deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List } from 'lucide';
+import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database } from 'lucide';
 
 let unsubscribe = null;
 let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [] };
 let currentOrders = [];
-let activeTab = 'statuses'; // 'statuses', 'mapping', 'users', 'schema', 'import'
+let activeTab = 'statuses'; // 'statuses', 'mapping', 'schema', 'users', 'data', 'import'
 
 export default {
   async render() {
@@ -87,7 +87,7 @@ export default {
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden min-h-[500px] flex flex-col md:flex-row">
         
         <!-- 左側設定選單 -->
-        <div class="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 flex flex-col gap-1 flex-shrink-0">
+        <div class="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 flex flex-col gap-1 flex-shrink-0 overflow-y-auto">
           <button class="tab-btn ${activeTab === 'statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="statuses">
             <i data-lucide="tag" class="w-4 h-4"></i> 狀態管理
           </button>
@@ -100,7 +100,11 @@ export default {
           <button class="tab-btn ${activeTab === 'users' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="users">
             <i data-lucide="shield" class="w-4 h-4"></i> 帳號管理
           </button>
-          <button class="tab-btn ${activeTab === 'import' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3 mt-4" data-tab="import">
+          <div class="border-t border-slate-200/60 my-2"></div>
+          <button class="tab-btn ${activeTab === 'data' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="data">
+            <i data-lucide="database" class="w-4 h-4"></i> 資料管理
+          </button>
+          <button class="tab-btn ${activeTab === 'import' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="import">
             <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> 匯入 Excel
           </button>
         </div>
@@ -113,7 +117,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Shield, FileSpreadsheet, List },
+      icons: { Tag, Users, Shield, FileSpreadsheet, List, Database },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -142,6 +146,8 @@ export default {
       this.renderSchema(content);
     } else if (activeTab === 'users') {
       this.renderUsers(content);
+    } else if (activeTab === 'data') {
+      this.renderDataManagement(content);
     } else if (activeTab === 'import') {
       this.renderImport(content);
     }
@@ -484,6 +490,65 @@ export default {
     });
   },
 
+  // ═══════════ 資料管理 ═══════════
+  renderDataManagement(container) {
+    container.innerHTML = `
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">資料管理</h2>
+          <p class="text-sm text-slate-500 mt-1">清除由 Excel 匯入的資料，保留您手動輸入的狀態與交期。</p>
+        </div>
+      </div>
+
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6">
+        <h3 class="text-rose-700 font-bold mb-2 flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-5 h-5"></i> 危險操作區
+        </h3>
+        <p class="text-sm text-rose-600 mb-4">
+          點擊下方按鈕將會清空所有工單中「由 Excel 匯入」的資料（如金額、類別、客戶名稱等），但<b>絕對不會</b>刪除工單號碼、當前狀態、交期與狀態更新日。清空後，您可以重新匯入新的 Excel，系統會自動將新資料與您手動填寫的狀態合併對齊。
+        </p>
+        <button id="btn-clear-excel-data" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i> 清空 Excel 匯入資料
+        </button>
+      </div>
+    `;
+
+    createIcons({ icons: { Trash2, AlertCircle }, attrs: { class: 'w-4 h-4' } });
+
+    document.getElementById('btn-clear-excel-data')?.addEventListener('click', async () => {
+      const confirmed = await openConfirm({
+        title: '清空 Excel 資料',
+        message: '確定要清空所有工單的 Excel 資料嗎？此操作無法復原，但您手動填寫的狀態與交期會保留。',
+        isDanger: true,
+        confirmText: '確認清空'
+      });
+
+      if (!confirmed) return;
+
+      showToast('正在清空資料...', 'info');
+
+      try {
+        const orders = await getCollection('work_orders');
+        let count = 0;
+        
+        for (const order of orders) {
+          // 僅更新 Excel 相關欄位為空值，保留 status, dueDate, statusUpdateDate
+          await updateDocument('work_orders', order.id, {
+            salesReps: ["未填寫"],
+            uploadDate: "",
+            data: {}
+          });
+          count++;
+        }
+
+        showToast(`成功清空 ${count} 筆工單的 Excel 資料`, 'success');
+      } catch (error) {
+        console.error('Clear data error:', error);
+        showToast('清空失敗，請稍後再試', 'error');
+      }
+    });
+  },
+
   // ═══════════ 匯入 Excel ═══════════
   renderImport(container) {
     container.innerHTML = `
@@ -493,7 +558,7 @@ export default {
           <i data-lucide="file-spreadsheet" class="w-8 h-8"></i>
         </div>
         <h3 class="text-lg font-bold text-slate-800 mb-2">點擊或拖曳 Excel 檔案至此</h3>
-        <p class="text-sm text-slate-500 max-w-sm">系統將會依據「欄位管理」中的設定，自動解析 Excel 標題並存入資料庫。若單號已存在，則會自動跳過。</p>
+        <p class="text-sm text-slate-500 max-w-sm">系統將會依據「欄位管理」中的設定，自動解析 Excel 標題並存入資料庫。若單號已存在，將會更新 Excel 資料並保留手動狀態。</p>
       </div>
     `;
 
@@ -566,6 +631,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792910800
+V: 1792911200
 W: UPGRADE-002
 ═══ */
