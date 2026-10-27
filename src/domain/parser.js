@@ -124,6 +124,11 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
     // 收集動態欄位資料 (非系統核心欄位)
     const data = {};
+    
+    // 💡 自動擷取工單號前兩碼英文作為類別
+    const categoryMatch = orderId.match(/^[a-zA-Z]+/);
+    data['category'] = categoryMatch ? categoryMatch[0].toUpperCase() : '其他';
+
     schema.forEach(field => {
       // 排除系統核心欄位 (id, uploadDate, salesRep 等)
       if (!field.isSystem && columnMap[field.key] !== undefined) {
@@ -148,6 +153,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1792911100
+V: 1792911500
 W: UPGRADE-002
 ═══ */
