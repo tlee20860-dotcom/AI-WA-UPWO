@@ -2,7 +2,7 @@ import { AppState } from '../config/state.js';
 import { listenCollection } from '../db/read.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { groupByStatus, generatePivotTable } from '../domain/stats.js';
-import { createIcons, Inbox, PieChart, LayoutDashboard } from 'lucide.js';
+import { createIcons, Inbox, PieChart, LayoutDashboard } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -155,7 +155,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/overview.js
-V: 1792903514
-W: webapp-20261026-001#26
+F: AI-WA-UPWO/src/pages/overview.js
+V: 1792909600
+W: UPGRADE-002
 ═══ */
