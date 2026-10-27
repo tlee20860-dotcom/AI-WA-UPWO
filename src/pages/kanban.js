@@ -27,12 +27,12 @@ export default {
         </button>
         <input type="file" id="excel-import-input" accept=".xlsx, .xls" class="hidden">
       `,
-      stats: [], // 初始為空，等資料載入後更新
+      stats: [],
       controls: '',
       listContainerId: 'kanban-container'
     });
 
-    // 2. 優先綁定按鈕事件（避免 createIcons 發生錯誤時中斷）
+    // 2. 優先綁定按鈕事件
     const btnImport = document.getElementById('btn-import-excel');
     const fileInput = document.getElementById('excel-import-input');
     
@@ -80,7 +80,6 @@ export default {
         const firstSheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[firstSheetName];
         
-        // 轉成 array of arrays
         const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
         if (jsonData.length < 2) {
           showToast('Excel 檔案沒有資料', 'error');
@@ -92,7 +91,6 @@ export default {
 
         showToast('解析中，請稍候...', 'info');
 
-        // 取得目前的設定檔（對照表、狀態與動態 Schema）
         let salesMapping = [];
         let currentStatuses = AppState.getStatuses() || ['排產中'];
         let currentSchema = [];
@@ -110,26 +108,32 @@ export default {
           console.warn('無法讀取設定檔，將使用預設值', err);
         }
 
-        // 呼叫 domain/parser.js 進行解析
+        // 呼叫解析器
         const parsedOrders = parseExcelData(headers, rows, salesMapping, currentStatuses[0], currentSchema);
 
-        // 防覆寫檢查與寫入
+        // 合併匯入邏輯（防覆寫手動資料）
         let addedCount = 0;
-        let skippedCount = 0;
+        let updatedCount = 0;
 
         for (const order of parsedOrders) {
           const existing = await getDocument('work_orders', order.id);
+          
           if (existing) {
-            skippedCount++;
+            // 如果已存在，僅更新 Excel 相關欄位，保留手動欄位（狀態、交期）
+            await updateDocument('work_orders', order.id, {
+              salesReps: order.salesReps,
+              uploadDate: order.uploadDate,
+              data: order.data
+            });
+            updatedCount++;
           } else {
+            // 新工單，直接寫入
             await setDocument('work_orders', order.id, order);
             addedCount++;
           }
         }
 
-        showToast(`匯入完成！新增 ${addedCount} 筆，跳過 ${skippedCount} 筆重複單號。`, 'success');
-        
-        // 清空 input 以便下次可重複上傳相同檔案
+        showToast(`匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`, 'success');
         e.target.value = '';
 
       } catch (error) {
@@ -173,17 +177,14 @@ export default {
       });
     }
 
-    // 分組
     const grouped = groupByStatus(orders, statuses);
 
-    // 渲染 Kanban
     const boardHtml = `
       <div class="flex gap-5 overflow-x-auto kanban-scroll pb-4 h-[calc(100vh-280px)]">
         ${statuses.map(status => {
           const statusOrders = grouped[status] || [];
           return `
-            <div class="w-[300px] flex-shrink-0 flex flex-col gap-3">
-              <!-- 欄位標頭 -->
+            <div class="w-[85vw] sm:w-[300px] flex-shrink-0 flex flex-col gap-3">
               <div class="flex items-center justify-between px-1">
                 <h3 class="font-semibold text-slate-700 flex items-center gap-2">
                   <span class="w-2 h-2 rounded-full bg-brand"></span>
@@ -192,7 +193,6 @@ export default {
                 <span class="text-xs font-medium bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">${statusOrders.length}</span>
               </div>
               
-              <!-- 工單列表 (內凹區塊) -->
               <div class="inset-panel p-2 flex flex-col gap-2 flex-1 overflow-y-auto kanban-scroll" data-status="${status}">
                 ${statusOrders.length === 0 ? `
                   <div class="flex flex-col items-center justify-center h-full text-slate-400 gap-2 py-10">
@@ -215,20 +215,17 @@ export default {
       attrs: { class: 'w-4 h-4' }
     });
 
-    // 綁定卡片事件
     this.bindCardEvents(statuses);
   },
 
   renderCard(order, statuses, isAdmin) {
-    // 取得當前狀態之外的其他狀態（供下拉選單使用）
     const otherStatuses = statuses.filter(s => s !== order.status);
-    
-    // 格式化日期
     const uploadDate = order.uploadDate ? order.uploadDate.split('T')[0] : '';
-    const salesReps = order.salesReps ? order.salesReps.join(', ') : '無';
+    const salesReps = order.salesReps ? order.salesReps.join(', ') : '未填寫';
     
-    // 動態抓取客戶名稱（優先中文，其次英文）
-    const customerName = order.data ? (order.data['customerNameZh'] || order.data['customerNameEn'] || '') : '';
+    // 動態抓取客戶名稱（優先中文，其次英文），並過濾異常星號
+    let customerName = order.data ? (order.data['customerNameZh'] || order.data['customerNameEn'] || '') : '';
+    if (customerName.includes('***')) customerName = '';
     
     return `
       <div class="glass-card p-4 relative group card-item" data-id="${order.id}" data-current-status="${order.status}">
@@ -242,6 +239,7 @@ export default {
           <div class="flex items-center gap-1.5 text-xs text-slate-500">
             <i data-lucide="user" class="w-3.5 h-3.5"></i> ${salesReps}
           </div>
+          ${order.dueDate ? `<div class="text-xs text-amber-600 flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> 交期：${order.dueDate}</div>` : ''}
         </div>
 
         ${isAdmin ? `
@@ -251,7 +249,6 @@ export default {
               <i data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
             </button>
             
-            <!-- 下拉選單 (預設隱藏) -->
             <div class="dropdown-menu hidden absolute left-0 right-0 top-full mt-1 bg-white border border-slate-100 shadow-soft rounded-xl p-1 z-10 mx-2">
               ${otherStatuses.map(s => `
                 <button class="w-full text-left px-3 py-2 text-sm text-slate-700 hover:bg-slate-50 rounded-lg transition-colors btn-change-status" data-new-status="${s}">
@@ -272,17 +269,13 @@ export default {
       const btnChangeStatuses = card.querySelectorAll('.btn-change-status');
 
       if (btnDropdown && dropdownMenu) {
-        // 切換下拉選單
         btnDropdown.addEventListener('click', (e) => {
           e.stopPropagation();
-          
-          // 先關閉其他所有選單
           document.querySelectorAll('.dropdown-menu').forEach(m => {
             if (m !== dropdownMenu) m.classList.add('hidden');
           });
 
           dropdownMenu.classList.toggle('hidden');
-          // 旋轉箭頭
           const icon = btnDropdown.querySelector('i');
           if (dropdownMenu.classList.contains('hidden')) {
             icon.style.transform = 'rotate(0deg)';
@@ -291,19 +284,16 @@ export default {
           }
         });
 
-        // 點擊選項切換狀態
         btnChangeStatuses.forEach(btn => {
           btn.addEventListener('click', async (e) => {
             e.stopPropagation();
             const newStatus = btn.dataset.newStatus;
             const orderId = card.dataset.id;
             
-            // 避免重複點擊
             btn.disabled = true;
             btn.textContent = '處理中...';
 
             try {
-              // 更新資料庫 (使用 updateDocument 僅更新狀態與時間)
               const nowStr = new Date().toISOString();
               await updateDocument('work_orders', orderId, {
                 status: newStatus,
@@ -311,7 +301,6 @@ export default {
               });
               
               showToast(`工單 ${orderId} 已流轉至【${newStatus}】`, 'success');
-              // 這裡不需要手動重新渲染，因為 read.js 的 listenCollection 會觸發重新渲染
             } catch (error) {
               console.error('Update status failed:', error);
               showToast('更新狀態失敗', 'error');
@@ -323,14 +312,13 @@ export default {
       }
     });
 
-    // 點擊空白處關閉所有選單
     document.addEventListener('click', () => {
       document.querySelectorAll('.dropdown-menu').forEach(m => {
         m.classList.add('hidden');
         const icon = m.parentElement.querySelector('.btn-dropdown i');
         if (icon) icon.style.transform = 'rotate(0deg)';
       });
-    }, { once: true }); // 每次渲染時綁定一次
+    }, { once: true });
   },
 
   destroy() {
@@ -344,6 +332,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792911000
+V: 1792911300
 W: UPGRADE-002
 ═══ */
