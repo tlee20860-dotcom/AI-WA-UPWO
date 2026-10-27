@@ -1,6 +1,6 @@
 import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
-import { deleteDocument } from '../db/write.js';
+import { deleteDocument, updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
@@ -145,6 +145,14 @@ export default {
           await deleteDocument('work_orders', id);
           showToast(`工單 ${id} 已刪除`, 'success');
         }
+      },
+      onStatusChange: async (id) => {
+        const newStatus = window.prompt(`請輸入要流轉的狀態名稱（例如：印刷、裁切）：`);
+        if (newStatus && newStatus.trim()) {
+          const nowStr = new Date().toISOString();
+          await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: nowStr });
+          showToast(`工單 ${id} 已流轉至【${newStatus.trim()}】`, 'success');
+        }
       }
     });
   },
@@ -193,6 +201,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792913300
+V: 1792913600
 W: UPGRADE-002
 ═══ */
