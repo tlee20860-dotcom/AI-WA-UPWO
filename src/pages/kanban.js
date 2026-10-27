@@ -6,7 +6,7 @@ import { showToast } from '../ui/toast.js';
 import { groupByStatus, calculateStats } from '../domain/stats.js';
 import { parseExcelData } from '../domain/parser.js';
 import * as XLSX from 'xlsx';
-import { createIcons, MoreVertical, ChevronDown, User, Calendar, Upload, CheckCircle2, AlertCircle } from 'lucide';
+import { createIcons, MoreVertical, ChevronDown, User, Calendar, Upload, CheckCircle2, AlertCircle, Activity, ClipboardList } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -165,7 +165,10 @@ export default {
           </div>
         `).join('')}
       `;
-      createIcons({ attrs: { class: 'w-4 h-4' } });
+      createIcons({ 
+        icons: { Activity, ClipboardList }, 
+        attrs: { class: 'w-4 h-4' } 
+      });
     }
 
     // 分組
@@ -336,6 +339,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792910400
+V: 1792910700
 W: UPGRADE-002
 ═══ */
