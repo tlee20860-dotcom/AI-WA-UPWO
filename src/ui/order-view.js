@@ -1,3 +1,4 @@
+import { AppState } from '../config/state.js';
 import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft, User, Calendar, ChevronDown, Inbox } from 'lucide';
 
 /**
@@ -17,18 +18,52 @@ export function formatExcelDate(val) {
   return String(val).trim();
 }
 
+/**
+ * 彈出狀態選擇視窗
+ */
+function showStatusModal(currentStatus, onSelect) {
+  const statuses = AppState.getStatuses() || [];
+  const otherStatuses = statuses.filter(s => s !== currentStatus);
+  
+  if (otherStatuses.length === 0) return;
+
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/40 z-[999] flex items-center justify-center p-4';
+  overlay.innerHTML = `
+    <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl">
+      <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
+        <h3 class="font-bold text-slate-800">選擇目標狀態</h3>
+        <button class="text-slate-400 hover:text-slate-600 close-modal text-xl leading-none">&times;</button>
+      </div>
+      <div class="p-4 flex flex-col gap-2">
+        ${otherStatuses.map(s => `
+          <button class="w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-brand hover:text-brand font-medium transition-colors btn-select-status" data-status="${s}">
+            ${s}
+          </button>
+        `).join('')}
+      </div>
+    </div>
+  `;
+  
+  document.body.appendChild(overlay);
+  
+  const close = () => overlay.remove();
+  overlay.querySelector('.close-modal').onclick = close;
+  overlay.onclick = (e) => { if (e.target === overlay) close(); };
+  
+  overlay.querySelectorAll('.btn-select-status').forEach(btn => {
+    btn.onclick = () => {
+      close();
+      onSelect(btn.dataset.status);
+    };
+  });
+}
+
 // 全域狀態暫存，避免切換頁面時遺失
 const viewStates = {};
 
 /**
  * 核心渲染器：完全數據驅動
- * @param {Object} options
- * @param {string} options.containerId 容器 ID
- * @param {Array} options.orders 原始工單資料
- * @param {Array} options.visibleFields 要顯示的欄位設定 (Schema)
- * @param {boolean} options.isAdmin 是否管理員
- * @param {string} options.pageKey 頁面唯一識別碼 (用於記憶視圖狀態)
- * @param {function} options.onAction 動作回呼 (流轉、刪除)
  */
 export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, onAction }) {
   const container = document.getElementById(containerId);
@@ -82,7 +117,18 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       // 動作按鈕 (流轉、刪除)
       const actionBtn = e.target.closest('[data-action="flow"], [data-action="delete"]');
       if (actionBtn) {
-        if (onAction) onAction(actionBtn.dataset.action, actionBtn.dataset.id);
+        const action = actionBtn.dataset.action;
+        const id = actionBtn.dataset.id;
+        if (action === 'flow') {
+          const order = cleanOrders.find(o => o.id === id);
+          if (order) {
+            showStatusModal(order.status, (newStatus) => {
+              if (onAction) onAction('flow', id, newStatus);
+            });
+          }
+        } else {
+          if (onAction) onAction(action, id);
+        }
       }
     });
 
@@ -209,6 +255,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792913800
+V: 1792914500
 W: UPGRADE-002
 ═══ */
