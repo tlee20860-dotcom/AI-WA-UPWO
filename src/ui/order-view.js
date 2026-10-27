@@ -58,7 +58,7 @@ export function renderTopTabs(containerId, items, activeItem, onSelect, extraHtm
 /**
  * 產生視圖切換按鈕 (卡片 / 表格)
  */
-export function renderViewToggle(currentView, onChange) {
+export function renderViewToggle(currentView) {
   return `
     <div class="segmented-control">
       <button id="btn-view-card" class="segment-btn ${currentView === 'card' ? 'active' : ''} flex items-center gap-1">
@@ -103,11 +103,15 @@ let filters = {};
  * @param {function} options.onStatusChange 狀態流轉回呼
  * @param {function} options.onDelete 刪除回呼
  */
-export function renderOrders({ containerId, orders, viewType, schema = [], isAdmin = false, onStatusChange = null, onDelete = null }) {
+export function renderOrders({ containerId, orders = [], viewType, schema = [], isAdmin = false, onStatusChange = null, onDelete = null }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  if (orders.length === 0) {
+  // 防呆：確保傳入的是陣列
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  const safeSchema = Array.isArray(schema) ? schema : [];
+
+  if (safeOrders.length === 0) {
     container.innerHTML = `
       <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft">
         <i data-lucide="inbox" class="w-12 h-12 opacity-30"></i>
@@ -119,9 +123,9 @@ export function renderOrders({ containerId, orders, viewType, schema = [], isAdm
   }
 
   if (viewType === 'card') {
-    renderCardView(container, orders, isAdmin, onStatusChange);
+    renderCardView(container, safeOrders, isAdmin, onStatusChange);
   } else {
-    renderTableView(container, orders, schema, isAdmin, onStatusChange, onDelete);
+    renderTableView(container, safeOrders, safeSchema, isAdmin, onStatusChange, onDelete);
   }
 }
 
@@ -162,9 +166,8 @@ function renderCardView(container, orders, isAdmin, onStatusChange) {
                 </button>
                 <div class="dropdown-menu hidden absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-100 shadow-xl rounded-xl p-1 z-[999]">
                   <div class="text-xs text-slate-400 px-3 py-1 mb-1 border-b border-slate-50">選擇目標狀態</div>
-                  <!-- 由外部傳入的狀態清單動態產生 -->
                   <div class="status-options" data-id="${order.id}">
-                    <!-- 這裡用 JS 動態注入，或由調用方傳入 -->
+                    <!-- 由外部傳入的狀態清單動態產生 -->
                   </div>
                 </div>
               </div>
@@ -175,7 +178,6 @@ function renderCardView(container, orders, isAdmin, onStatusChange) {
     </div>
   `;
   createIcons({ icons: { User, Calendar, ChevronDown }, attrs: { class: 'w-4 h-4' } });
-  // 狀態流轉事件交由外部處理（因為需要 AppState 的狀態清單）
 }
 
 // ═══════════ 表格視圖 ═══════════
@@ -200,7 +202,7 @@ function renderTableView(container, orders, schema, isAdmin, onStatusChange, onD
     }
   });
 
-  const customFields = schema.filter(f => !f.isSystem);
+  const customFields = schema.filter(f => f && !f.isSystem);
 
   const getSortIcon = (key) => {
     if (sortKey !== key) return `<i data-lucide="arrow-up-down" class="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"></i>`;
@@ -238,11 +240,14 @@ function renderTableView(container, orders, schema, isAdmin, onStatusChange, onD
                 <tr class="hover:bg-slate-50/50 transition-colors">
                   <td class="px-4 py-3 font-bold text-slate-900 whitespace-nowrap">${order.id}</td>
                   <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 bg-slate-100 rounded-md text-xs">${cat}</span></td>
-                  <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 bg-brand/10 text-brand rounded-md text-xs font-semibold">${order.status}</span></td>
+                  <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 bg-brand/10 text-brand rounded-md text-xs font-semibold">${order.status || '未知'}</span></td>
                   <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatExcelDate(order.uploadDate)}</td>
                   <td class="px-4 py-3 font-medium ${order.dueDate ? 'text-amber-600' : 'text-slate-400'} whitespace-nowrap">${formatExcelDate(order.dueDate) || '-'}</td>
                   ${customFields.map(f => {
-                    const val = order.data && order.data[f.key] !== undefined ? order.data[f.key] : '-';
+                    let val = '-';
+                    if (order.data && order.data[f.key] !== undefined && order.data[f.key] !== null) {
+                      val = String(order.data[f.key]);
+                    }
                     return `<td class="px-4 py-3 text-slate-600 whitespace-nowrap truncate max-w-[200px]" title="${val}">${val}</td>`;
                   }).join('')}
                   
@@ -331,17 +336,18 @@ function renderFilterInput(key, placeholder) {
 }
 
 function getOrderValue(order, key) {
+  if (!order) return '';
   if (key === 'id') return order.id || '';
   if (key === 'status') return order.status || '';
   if (key === 'uploadDate') return formatExcelDate(order.uploadDate);
   if (key === 'dueDate') return formatExcelDate(order.dueDate);
   if (key === 'category') return order.data && order.data.category ? order.data.category : '';
   if (key === 'salesReps') return (order.salesReps || []).join(',');
-  return order.data && order.data[key] !== undefined ? order.data[key] : '';
+  return order.data && order.data[key] !== undefined && order.data[key] !== null ? String(order.data[key]) : '';
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792912700
+V: 1792913500
 W: UPGRADE-002
 ═══ */
