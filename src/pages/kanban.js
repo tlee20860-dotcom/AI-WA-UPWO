@@ -1,9 +1,11 @@
 import { AppState } from '../config/state.js';
-import { listenCollection } from '../db/read.js';
-import { updateDocument } from '../db/write.js';
+import { listenCollection, getDocument } from '../db/read.js';
+import { updateDocument, setDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { groupByStatus, calculateStats } from '../domain/stats.js';
+import { parseExcelData } from '../domain/parser.js';
+import * as XLSX from 'xlsx';
 import { createIcons, MoreVertical, ChevronDown, User, Calendar, Upload, CheckCircle2, AlertCircle } from 'lucide';
 
 let unsubscribe = null;
@@ -23,6 +25,7 @@ export default {
           <i data-lucide="upload" class="w-4 h-4"></i>
           匯入 Excel
         </button>
+        <input type="file" id="excel-import-input" accept=".xlsx, .xls" class="hidden">
       `,
       stats: [], // 初始為空，等資料載入後更新
       controls: '',
@@ -34,21 +37,25 @@ export default {
       attrs: { class: 'w-4 h-4' }
     });
 
-    // 匯入按鈕事件（交由外部處理，或後續實作）
-    document.getElementById('btn-import-excel')?.addEventListener('click', () => {
-      showToast('請至「系統設定」頁面進行匯入，或使用專屬匯入元件', 'info');
-    });
+    // 匯入按鈕事件
+    const btnImport = document.getElementById('btn-import-excel');
+    const fileInput = document.getElementById('excel-import-input');
+    
+    if (btnImport && fileInput) {
+      btnImport.addEventListener('click', () => {
+        fileInput.click();
+      });
+
+      fileInput.addEventListener('change', (e) => {
+        this.handleFileSelect(e);
+      });
+    }
 
     // 2. 初始化資料監聽
     this.initDataListener();
   },
 
   initDataListener() {
-    // 監聽 settings 取得狀態清單
-    // 監聽 work_orders 取得工單資料
-    // 為了簡化，這裡先監聽 work_orders，狀態清單我們從 settings 讀取（或使用預設）
-    
-    // 這裡使用一個內部變數來快取狀態
     let statuses = AppState.getStatuses();
     if (!statuses || statuses.length === 0) {
       statuses = ['排產中', '印刷', '裁切', '品檢', '出貨'];
@@ -58,6 +65,77 @@ export default {
       currentOrders = orders;
       this.renderKanban(orders, statuses);
     });
+  },
+
+  async handleFileSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (evt) => {
+      try {
+        const data = new Uint8Array(evt.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const firstSheetName = workbook.SheetNames[0];
+        const worksheet = workbook.Sheets[firstSheetName];
+        
+        // 轉成 array of arrays
+        const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
+        if (jsonData.length < 2) {
+          showToast('Excel 檔案沒有資料', 'error');
+          return;
+        }
+
+        const headers = jsonData[0];
+        const rows = jsonData.slice(1);
+
+        showToast('解析中，請稍候...', 'info');
+
+        // 取得目前的設定檔（對照表與狀態）
+        let salesMapping = [];
+        let currentStatuses = AppState.getStatuses() || ['排產中'];
+        
+        try {
+          const settingsDoc = await getDocument('settings', 'main');
+          if (settingsDoc) {
+            salesMapping = settingsDoc.sales_mapping || [];
+            if (settingsDoc.statuses && settingsDoc.statuses.length > 0) {
+              currentStatuses = settingsDoc.statuses;
+            }
+          }
+        } catch (err) {
+          console.warn('無法讀取設定檔，將使用預設值', err);
+        }
+
+        // 呼叫 domain/parser.js 進行解析
+        const parsedOrders = parseExcelData(headers, rows, salesMapping, currentStatuses[0]);
+
+        // 防覆寫檢查與寫入
+        let addedCount = 0;
+        let skippedCount = 0;
+
+        for (const order of parsedOrders) {
+          const existing = await getDocument('work_orders', order.id);
+          if (existing) {
+            skippedCount++;
+          } else {
+            await setDocument('work_orders', order.id, order);
+            addedCount++;
+          }
+        }
+
+        showToast(`匯入完成！新增 ${addedCount} 筆，跳過 ${skippedCount} 筆重複單號。`, 'success');
+        
+        // 清空 input 以便下次可重複上傳相同檔案
+        e.target.value = '';
+
+      } catch (error) {
+        console.error('Import Error:', error);
+        showToast('匯入失敗，請檢查檔案格式', 'error');
+        e.target.value = '';
+      }
+    };
+    reader.readAsArrayBuffer(file);
   },
 
   renderKanban(orders, statuses) {
@@ -256,7 +334,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/kanban.js
-V: 1792903512
-W: webapp-20261026-001#24
+F: AI-WA-UPWO/src/pages/kanban.js
+V: 1792910200
+W: UPGRADE-002
 ═══ */
