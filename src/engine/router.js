@@ -9,6 +9,7 @@ import TablePage from '../pages/table.js';
 import OverviewPage from '../pages/overview.js';
 import SalespersonPage from '../pages/salesperson.js';
 import SettingsPage from '../pages/settings.js';
+import CategoryPage from '../pages/category.js';
 
 const routes = {
   login: LoginPage,
@@ -16,7 +17,8 @@ const routes = {
   table: TablePage,
   overview: OverviewPage,
   salesperson: SalespersonPage,
-  settings: SettingsPage
+  settings: SettingsPage,
+  category: CategoryPage
 };
 
 let currentPageInstance = null;
@@ -118,7 +120,7 @@ export function initRouter() {
 }
 
 /* ═══ EOF ═══
-F: src/engine/router.js
-V: 1792903517
-W: webapp-20261026-001#29
+F: AI-WA-UPWO/src/engine/router.js
+V: 1792912200
+W: UPGRADE-002
 ═══ */
