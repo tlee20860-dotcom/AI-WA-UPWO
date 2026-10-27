@@ -1,9 +1,11 @@
 import { AppState } from '../config/state.js';
 import { listenCollection } from '../db/read.js';
+import { deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
-import { createIcons, Download, FileText, Inbox } from 'lucide';
+import { openConfirm } from '../ui/modal.js';
+import { createIcons, Download, FileText, Inbox, Trash2 } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -84,7 +86,8 @@ export default {
                 <th class="px-6 py-4">當前狀態</th>
                 <th class="px-6 py-4">上傳日期</th>
                 <th class="px-6 py-4">狀態更新日</th>
-                <th class="px-6 py-4 rounded-tr-[20px]">交貨日期</th>
+                <th class="px-6 py-4">交貨日期</th>
+                <th class="px-6 py-4 text-center rounded-tr-[20px]">操作</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
@@ -112,6 +115,11 @@ export default {
                     <td class="px-6 py-4 text-slate-500">${uploadDate}</td>
                     <td class="px-6 py-4 text-slate-500">${statusUpdateDate}</td>
                     <td class="px-6 py-4 font-medium ${order.dueDate ? 'text-brand' : 'text-slate-400'}">${dueDate}</td>
+                    <td class="px-6 py-4 text-center">
+                      <button class="btn-delete-order p-2 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" data-id="${order.id}" title="刪除工單">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                      </button>
+                    </td>
                   </tr>
                 `;
               }).join('')}
@@ -125,6 +133,38 @@ export default {
     `;
 
     container.innerHTML = tableHtml;
+    
+    // 渲染表格內的垃圾桶圖示
+    createIcons({ icons: { Trash2 }, attrs: { class: 'w-4 h-4' } });
+
+    // 綁定刪除按鈕事件
+    this.bindDeleteEvents();
+  },
+
+  bindDeleteEvents() {
+    document.querySelectorAll('.btn-delete-order').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const orderId = e.currentTarget.dataset.id;
+        
+        const confirmed = await openConfirm({
+          title: '刪除工單',
+          message: `確定要徹底刪除工單「${orderId}」嗎？此操作無法復原，包含手動填寫的狀態與交期都會被刪除。`,
+          isDanger: true,
+          confirmText: '確認刪除'
+        });
+
+        if (!confirmed) return;
+
+        try {
+          await deleteDocument('work_orders', orderId);
+          showToast(`工單 ${orderId} 已刪除`, 'success');
+          // 這裡不需要手動重新渲染，因為 read.js 的 listenCollection 會觸發重新渲染
+        } catch (error) {
+          console.error('Delete order failed:', error);
+          showToast('刪除失敗，請稍後再試', 'error');
+        }
+      });
+    });
   },
 
   bindHeaderEvents() {
@@ -170,6 +210,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792910300
+V: 1792911400
 W: UPGRADE-002
 ═══ */
