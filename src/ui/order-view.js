@@ -1,353 +1,214 @@
-import { createIcons, ChevronDown, User, Calendar, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft } from 'lucide';
+import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft, User, Calendar, ChevronDown, Inbox } from 'lucide';
 
 /**
- * 將 Excel 日期序列號轉換為 YYYY-MM-DD 格式
+ * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
  */
 export function formatExcelDate(val) {
-  if (!val) return "";
-  if (typeof val === 'string' && (val.includes('-') || val.includes('/'))) {
-    return val.trim();
+  if (!val) return "-";
+  if (typeof val === 'string') {
+    if (val.includes('T')) return val.split('T')[0];
+    if (val.includes('-') || val.includes('/')) return val.trim();
   }
   const num = Number(val);
   if (!isNaN(num) && num > 20000 && num < 80000) {
     const date = new Date((num - 25569) * 86400 * 1000);
-    if (!isNaN(date.getTime())) {
-      return date.toISOString().split('T')[0];
-    }
+    if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
   }
   return String(val).trim();
 }
 
-/**
- * 產生上方獨立按鈕清單 (像 Tabs)
- * @param {string} containerId 容器 ID
- * @param {Array} items 按鈕項目清單
- * @param {string} activeItem 當前選中的項目
- * @param {function} onSelect 點擊回呼
- * @param {string} extraHtml 右側附加的 HTML (如視圖切換按鈕)
- */
-export function renderTopTabs(containerId, items, activeItem, onSelect, extraHtml = '') {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-
-  container.innerHTML = `
-    <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-4">
-      <div class="flex items-center gap-2 overflow-x-auto w-full pb-2 sm:pb-0 kanban-scroll">
-        ${items.map(item => `
-          <button class="tab-btn whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium transition-colors border ${item.value === activeItem ? 'bg-brand text-white border-brand shadow-sm' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}" data-value="${item.value}">
-            ${item.label} ${item.count !== undefined ? `<span class="ml-1 text-xs ${item.value === activeItem ? 'bg-white/20' : 'bg-slate-100'} px-1.5 py-0.5 rounded-md">${item.count}</span>` : ''}
-          </button>
-        `).join('')}
-      </div>
-      <div class="flex-shrink-0">
-        ${extraHtml}
-      </div>
-    </div>
-  `;
-
-  container.querySelectorAll('.tab-btn').forEach(btn => {
-    btn.addEventListener('click', (e) => {
-      const val = e.currentTarget.dataset.value;
-      if (val !== activeItem) {
-        onSelect(val);
-      }
-    });
-  });
-}
+// 全域狀態暫存，避免切換頁面時遺失
+const viewStates = {};
 
 /**
- * 產生視圖切換按鈕 (卡片 / 表格)
- */
-export function renderViewToggle(currentView) {
-  return `
-    <div class="segmented-control">
-      <button id="btn-view-card" class="segment-btn ${currentView === 'card' ? 'active' : ''} flex items-center gap-1">
-        卡片
-      </button>
-      <button id="btn-view-table" class="segment-btn ${currentView === 'table' ? 'active' : ''} flex items-center gap-1">
-        表格
-      </button>
-    </div>
-  `;
-}
-
-/**
- * 綁定視圖切換事件
- */
-export function bindViewToggle(onChange) {
-  document.getElementById('btn-view-card')?.addEventListener('click', () => {
-    document.getElementById('btn-view-card').classList.add('active');
-    document.getElementById('btn-view-table').classList.remove('active');
-    onChange('card');
-  });
-  document.getElementById('btn-view-table')?.addEventListener('click', () => {
-    document.getElementById('btn-view-table').classList.add('active');
-    document.getElementById('btn-view-card').classList.remove('active');
-    onChange('table');
-  });
-}
-
-// 表格內部狀態
-let sortKey = '';
-let sortOrder = 'asc'; // 'asc' | 'desc'
-let filters = {};
-
-/**
- * 渲染工單清單（卡片或表格）
+ * 核心渲染器：完全數據驅動
  * @param {Object} options
  * @param {string} options.containerId 容器 ID
- * @param {Array} options.orders 工單陣列
- * @param {string} options.viewType 'card' | 'table'
- * @param {Array} options.schema 動態欄位設定
- * @param {boolean} options.isAdmin 是否為管理員
- * @param {function} options.onStatusChange 狀態流轉回呼
- * @param {function} options.onDelete 刪除回呼
+ * @param {Array} options.orders 原始工單資料
+ * @param {Array} options.visibleFields 要顯示的欄位設定 (Schema)
+ * @param {boolean} options.isAdmin 是否管理員
+ * @param {string} options.pageKey 頁面唯一識別碼 (用於記憶視圖狀態)
+ * @param {function} options.onAction 動作回呼 (流轉、刪除)
  */
-export function renderOrders({ containerId, orders = [], viewType, schema = [], isAdmin = false, onStatusChange = null, onDelete = null }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
-  // 防呆：確保傳入的是陣列
-  const safeOrders = Array.isArray(orders) ? orders : [];
-  const safeSchema = Array.isArray(schema) ? schema : [];
+  if (!viewStates[pageKey]) {
+    viewStates[pageKey] = { viewType: 'table', sortKey: '', sortOrder: 'asc', filters: {} };
+  }
+  const state = viewStates[pageKey];
 
-  if (safeOrders.length === 0) {
-    container.innerHTML = `
-      <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft">
+  // 1. 資料清洗：過濾垃圾資料 (含 *** 或無單號)
+  let cleanOrders = orders.filter(o => {
+    const id = String(o.id || '');
+    return id && !id.includes('***') && !id.includes('訂單');
+  });
+
+  // 2. 依配置提取顯示欄位
+  const displayFields = visibleFields.filter(f => f.isVisible);
+
+  // 3. 全域事件委派 (確保全站按鈕絕不失效)
+  if (!window._orderViewListenerAdded) {
+    document.addEventListener('click', (e) => {
+      // 切換視圖
+      const viewBtn = e.target.closest('[data-action="switch-view"]');
+      if (viewBtn) {
+        const key = viewBtn.dataset.pageKey;
+        if (viewStates[key]) {
+          viewStates[key].viewType = viewBtn.dataset.view;
+          window.dispatchEvent(new Event(`refresh-${key}`));
+        }
+        return;
+      }
+
+      // 排序
+      const th = e.target.closest('th[data-sort]');
+      if (th) {
+        const key = th.dataset.pageKey;
+        const sortKey = th.dataset.sort;
+        if (viewStates[key]) {
+          if (viewStates[key].sortKey === sortKey) {
+            viewStates[key].sortOrder = viewStates[key].sortOrder === 'asc' ? 'desc' : 'asc';
+          } else {
+            viewStates[key].sortKey = sortKey;
+            viewStates[key].sortOrder = 'asc';
+          }
+          window.dispatchEvent(new Event(`refresh-${key}`));
+        }
+        return;
+      }
+      
+      // 動作按鈕 (流轉、刪除)
+      const actionBtn = e.target.closest('[data-action="flow"], [data-action="delete"]');
+      if (actionBtn) {
+        if (onAction) onAction(actionBtn.dataset.action, actionBtn.dataset.id);
+      }
+    });
+
+    // 篩選輸入
+    document.addEventListener('input', (e) => {
+      const input = e.target.closest('input[data-filter]');
+      if (input) {
+        const key = input.dataset.pageKey;
+        if (viewStates[key]) {
+          viewStates[key].filters[input.dataset.filter] = input.value;
+          window.dispatchEvent(new Event(`refresh-${key}`));
+        }
+      }
+    });
+    window._orderViewListenerAdded = true;
+  }
+
+  // 4. 處理排序與篩選
+  if (state.sortKey) {
+    cleanOrders.sort((a, b) => {
+      let valA = getOrderValue(a, state.sortKey);
+      let valB = getOrderValue(b, state.sortKey);
+      return (valA < valB ? -1 : 1) * (state.sortOrder === 'asc' ? 1 : -1);
+    });
+  }
+  Object.keys(state.filters).forEach(k => {
+    const v = state.filters[k].toLowerCase();
+    if (v) cleanOrders = cleanOrders.filter(o => String(getOrderValue(o, k)).toLowerCase().includes(v));
+  });
+
+  // 5. 生成 HTML
+  const viewToggleHtml = `
+    <div class="segmented-control mb-4">
+      <button data-action="switch-view" data-view="card" data-page-key="${pageKey}" class="segment-btn ${state.viewType === 'card' ? 'active' : ''}">卡片</button>
+      <button data-action="switch-view" data-view="table" data-page-key="${pageKey}" class="segment-btn ${state.viewType === 'table' ? 'active' : ''}">表格</button>
+    </div>
+  `;
+
+  if (cleanOrders.length === 0) {
+    container.innerHTML = viewToggleHtml + `
+      <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft mt-4">
         <i data-lucide="inbox" class="w-12 h-12 opacity-30"></i>
         <span class="text-base font-medium">目前無工單資料</span>
       </div>
     `;
-    createIcons({ attrs: { class: 'w-12 h-12' } });
+    createIcons({ icons: { Inbox }, attrs: { class: 'w-12 h-12' } });
     return;
   }
 
-  if (viewType === 'card') {
-    renderCardView(container, safeOrders, isAdmin, onStatusChange);
+  let contentHtml = '';
+  if (state.viewType === 'card') {
+    // 動態卡片
+    contentHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">` + 
+      cleanOrders.map(order => `
+        <div class="glass-card p-4 flex flex-col gap-2">
+          ${displayFields.map(f => {
+            const val = getOrderValue(order, f.key);
+            return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
+          }).join('')}
+          ${isAdmin ? `
+            <div class="mt-auto pt-2 border-t border-slate-100 flex gap-2 justify-end">
+              <button data-action="flow" data-id="${order.id}" class="text-xs text-brand hover:bg-brand/10 px-2 py-1 rounded">流轉</button>
+              <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
+            </div>
+          ` : ''}
+        </div>
+      `).join('') + `</div>`;
   } else {
-    renderTableView(container, safeOrders, safeSchema, isAdmin, onStatusChange, onDelete);
-  }
-}
-
-// ═══════════ 卡片視圖 ═══════════
-function renderCardView(container, orders, isAdmin, onStatusChange) {
-  container.innerHTML = `
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">
-      ${orders.map(order => {
-        const uploadDate = formatExcelDate(order.uploadDate);
-        const salesReps = order.salesReps ? order.salesReps.join(', ') : '未填寫';
-        const category = order.data && order.data.category ? order.data.category : '其他';
-        let customerName = order.data ? (order.data['customerNameZh'] || order.data['customerNameEn'] || '') : '';
-        if (customerName.includes('***')) customerName = '';
-        
-        return `
-          <div class="glass-card p-4 relative card-item !overflow-visible" data-id="${order.id}" data-status="${order.status}">
-            <div class="flex justify-between items-start mb-2">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-slate-900">${order.id}</span>
-                <span class="text-[10px] font-bold bg-brand/10 text-brand px-1.5 py-0.5 rounded">${category}</span>
-              </div>
-              <span class="text-[10px] font-medium bg-slate-100 text-slate-500 px-2 py-1 rounded-md">${uploadDate}</span>
-            </div>
-            
-            <div class="flex flex-col gap-1.5 mb-3">
-              ${customerName ? `<div class="text-sm text-slate-600 truncate">客戶：${customerName}</div>` : ''}
-              <div class="flex items-center gap-1.5 text-xs text-slate-500">
-                <i data-lucide="user" class="w-3.5 h-3.5"></i> ${salesReps}
-              </div>
-              ${order.dueDate ? `<div class="text-xs text-amber-600 flex items-center gap-1.5"><i data-lucide="calendar" class="w-3.5 h-3.5"></i> 交期：${formatExcelDate(order.dueDate)}</div>` : ''}
-            </div>
-
-            ${isAdmin && onStatusChange ? `
-              <div class="mt-3 pt-3 border-t border-slate-100 relative">
-                <button class="w-full flex items-center justify-between text-xs font-medium text-slate-500 hover:text-brand transition-colors btn-dropdown">
-                  <span>流轉工序</span>
-                  <i data-lucide="chevron-down" class="w-4 h-4 transition-transform"></i>
-                </button>
-                <div class="dropdown-menu hidden absolute left-0 right-0 bottom-full mb-1 bg-white border border-slate-100 shadow-xl rounded-xl p-1 z-[999]">
-                  <div class="text-xs text-slate-400 px-3 py-1 mb-1 border-b border-slate-50">選擇目標狀態</div>
-                  <div class="status-options" data-id="${order.id}">
-                    <!-- 由外部傳入的狀態清單動態產生 -->
-                  </div>
-                </div>
-              </div>
-            ` : ''}
-          </div>
-        `;
-      }).join('')}
-    </div>
-  `;
-  createIcons({ icons: { User, Calendar, ChevronDown }, attrs: { class: 'w-4 h-4' } });
-}
-
-// ═══════════ 表格視圖 ═══════════
-function renderTableView(container, orders, schema, isAdmin, onStatusChange, onDelete) {
-  // 1. 處理排序
-  let sortedOrders = [...orders];
-  if (sortKey) {
-    sortedOrders.sort((a, b) => {
-      let valA = getOrderValue(a, sortKey);
-      let valB = getOrderValue(b, sortKey);
-      if (valA < valB) return sortOrder === 'asc' ? -1 : 1;
-      if (valA > valB) return sortOrder === 'asc' ? 1 : -1;
-      return 0;
-    });
-  }
-
-  // 2. 處理篩選
-  Object.keys(filters).forEach(key => {
-    const filterVal = filters[key].toLowerCase();
-    if (filterVal) {
-      sortedOrders = sortedOrders.filter(o => String(getOrderValue(o, key)).toLowerCase().includes(filterVal));
-    }
-  });
-
-  const customFields = schema.filter(f => f && !f.isSystem);
-
-  const getSortIcon = (key) => {
-    if (sortKey !== key) return `<i data-lucide="arrow-up-down" class="w-3 h-3 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity"></i>`;
-    return sortOrder === 'asc' ? `<i data-lucide="arrow-up" class="w-3 h-3 text-brand"></i>` : `<i data-lucide="arrow-down" class="w-3 h-3 text-brand"></i>`;
-  };
-
-  container.innerHTML = `
-    <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden flex flex-col w-full h-full">
-      <div class="overflow-auto flex-1 kanban-scroll">
-        <table class="w-full text-left border-collapse min-w-[1000px]">
+    // 動態表格
+    contentHtml = `
+      <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-x-auto w-full">
+        <table class="w-full text-left border-collapse min-w-full">
           <thead class="sticky top-0 bg-slate-50 z-10 shadow-sm">
             <tr class="border-b border-slate-200/60 text-sm font-semibold text-slate-600">
-              ${renderTh('id', '工單號碼')}
-              ${renderTh('category', '類別')}
-              ${renderTh('status', '當前狀態')}
-              ${renderTh('uploadDate', '上傳日期')}
-              ${renderTh('dueDate', '交期')}
-              ${customFields.map(f => renderTh(f.key, f.label)).join('')}
-              ${(onStatusChange || onDelete) ? `<th class="px-4 py-3 text-center min-w-[100px]">操作</th>` : ''}
+              ${displayFields.map(f => `
+                <th class="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" data-sort="${f.key}" data-page-key="${pageKey}">
+                  <div class="flex items-center gap-1">${f.label} <i data-lucide="${state.sortKey === f.key ? (state.sortOrder === 'asc' ? 'arrow-up' : 'arrow-down') : 'arrow-up-down'}" class="w-3 h-3 ${state.sortKey === f.key ? 'text-brand' : 'text-slate-300'}"></i></div>
+                </th>
+              `).join('')}
+              ${isAdmin ? `<th class="px-4 py-3 text-center">操作</th>` : ''}
             </tr>
             <tr class="bg-white border-b border-slate-100">
-              ${renderFilterInput('id', '搜尋號碼...')}
-              ${renderFilterInput('category', '搜尋類別...')}
-              ${renderFilterInput('status', '搜尋狀態...')}
-              ${renderFilterInput('uploadDate', '搜尋日期...')}
-              ${renderFilterInput('dueDate', '搜尋交期...')}
-              ${customFields.map(f => renderFilterInput(f.key, '搜尋...')).join('')}
-              ${(onStatusChange || onDelete) ? `<th class="px-4 py-1"></th>` : ''}
+              ${displayFields.map(f => `<th class="px-2 py-2"><input type="text" data-filter="${f.key}" data-page-key="${pageKey}" value="${state.filters[f.key] || ''}" class="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none"></th>`).join('')}
+              ${isAdmin ? `<th></th>` : ''}
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
-            ${sortedOrders.map(order => {
-              const cat = order.data && order.data.category ? order.data.category : '其他';
-              return `
-                <tr class="hover:bg-slate-50/50 transition-colors">
-                  <td class="px-4 py-3 font-bold text-slate-900 whitespace-nowrap">${order.id}</td>
-                  <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 bg-slate-100 rounded-md text-xs">${cat}</span></td>
-                  <td class="px-4 py-3 whitespace-nowrap"><span class="px-2 py-1 bg-brand/10 text-brand rounded-md text-xs font-semibold">${order.status || '未知'}</span></td>
-                  <td class="px-4 py-3 text-slate-500 whitespace-nowrap">${formatExcelDate(order.uploadDate)}</td>
-                  <td class="px-4 py-3 font-medium ${order.dueDate ? 'text-amber-600' : 'text-slate-400'} whitespace-nowrap">${formatExcelDate(order.dueDate) || '-'}</td>
-                  ${customFields.map(f => {
-                    let val = '-';
-                    if (order.data && order.data[f.key] !== undefined && order.data[f.key] !== null) {
-                      val = String(order.data[f.key]);
-                    }
-                    return `<td class="px-4 py-3 text-slate-600 whitespace-nowrap truncate max-w-[200px]" title="${val}">${val}</td>`;
-                  }).join('')}
-                  
-                  ${(onStatusChange || onDelete) ? `
-                    <td class="px-4 py-3 text-center whitespace-nowrap">
-                      <div class="flex items-center justify-center gap-2">
-                        ${onDelete ? `
-                          <button class="btn-delete p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors" data-id="${order.id}" title="刪除">
-                            <i data-lucide="trash-2" class="w-4 h-4"></i>
-                          </button>
-                        ` : ''}
-                        ${onStatusChange && isAdmin ? `
-                          <button class="btn-flow p-1.5 text-slate-400 hover:text-brand hover:bg-brand/5 rounded-lg transition-colors" data-id="${order.id}" title="流轉">
-                            <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
-                          </button>
-                        ` : ''}
-                      </div>
-                    </td>
-                  ` : ''}
-                </tr>
-              `;
-            }).join('')}
+            ${cleanOrders.map(order => `
+              <tr class="hover:bg-slate-50/50 transition-colors">
+                ${displayFields.map(f => `<td class="px-4 py-3 whitespace-nowrap">${getOrderValue(order, f.key) || '-'}</td>`).join('')}
+                ${isAdmin ? `
+                  <td class="px-4 py-3 text-center whitespace-nowrap">
+                    <button data-action="flow" data-id="${order.id}" class="text-xs text-brand hover:bg-brand/10 px-2 py-1 rounded mr-1">流轉</button>
+                    <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
+                  </td>
+                ` : ''}
+              </tr>
+            `).join('')}
           </tbody>
         </table>
       </div>
-      <div class="bg-slate-50/50 px-6 py-3 border-t border-slate-100 text-xs text-slate-400 flex justify-between items-center">
-        <span>共計 ${sortedOrders.length} 筆工單（已過濾）</span>
-      </div>
-    </div>
-  `;
-
-  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft }, attrs: { class: 'w-4 h-4' } });
-
-  // 綁定排序事件
-  container.querySelectorAll('th[data-sort]').forEach(th => {
-    th.addEventListener('click', () => {
-      const key = th.dataset.sort;
-      if (sortKey === key) {
-        sortOrder = sortOrder === 'asc' ? 'desc' : 'asc';
-      } else {
-        sortKey = key;
-        sortOrder = 'asc';
-      }
-      renderTableView(container, orders, schema, isAdmin, onStatusChange, onDelete);
-    });
-  });
-
-  // 綁定篩選事件
-  container.querySelectorAll('input[data-filter]').forEach(input => {
-    input.value = filters[input.dataset.filter] || '';
-    input.addEventListener('input', (e) => {
-      filters[e.target.dataset.filter] = e.target.value;
-      renderTableView(container, orders, schema, isAdmin, onStatusChange, onDelete);
-    });
-  });
-
-  // 綁定操作事件
-  if (onDelete) {
-    container.querySelectorAll('.btn-delete').forEach(btn => {
-      btn.addEventListener('click', () => onDelete(btn.dataset.id));
-    });
+    `;
   }
-  if (onStatusChange && isAdmin) {
-    container.querySelectorAll('.btn-flow').forEach(btn => {
-      btn.addEventListener('click', () => onStatusChange(btn.dataset.id));
-    });
-  }
+
+  container.innerHTML = viewToggleHtml + contentHtml;
+  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown }, attrs: { class: 'w-3 h-3' } });
 }
 
-function renderTh(key, label) {
-  return `
-    <th class="px-4 py-3 cursor-pointer group hover:bg-slate-100 transition-colors min-w-[120px] resize-x overflow-auto" data-sort="${key}">
-      <div class="flex items-center gap-1">
-        ${label} ${getSortIcon(key)}
-      </div>
-    </th>
-  `;
-}
-
-function renderFilterInput(key, placeholder) {
-  return `
-    <th class="px-2 py-2">
-      <input type="text" class="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none focus:border-brand" data-filter="${key}" placeholder="${placeholder}">
-    </th>
-  `;
-}
-
+/**
+ * 取得欄位值 (處理巢狀 data 與特殊日期格式)
+ */
 function getOrderValue(order, key) {
-  if (!order) return '';
-  if (key === 'id') return order.id || '';
-  if (key === 'status') return order.status || '';
-  if (key === 'uploadDate') return formatExcelDate(order.uploadDate);
-  if (key === 'dueDate') return formatExcelDate(order.dueDate);
-  if (key === 'category') return order.data && order.data.category ? order.data.category : '';
-  if (key === 'salesReps') return (order.salesReps || []).join(',');
-  return order.data && order.data[key] !== undefined && order.data[key] !== null ? String(order.data[key]) : '';
+  if (key === 'uploadDate' || key === 'dueDate' || key === 'statusUpdateDate') {
+    return formatExcelDate(order[key]);
+  }
+  if (key === 'status') {
+    return `<span class="px-2 py-1 bg-brand/10 text-brand rounded-md text-xs font-semibold">${order.status || '未知'}</span>`;
+  }
+  if (order.data && order.data[key] !== undefined) {
+    return order.data[key];
+  }
+  return order[key] !== undefined ? order[key] : '';
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792913700
+V: 1792913800
 W: UPGRADE-002
 ═══ */
