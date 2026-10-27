@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  /* 實體感卡片 */
+  .glass-card {
+    @apply bg-white rounded-[20px] border border-black/[0.04] shadow-soft transition-all duration-300;
+  }
+  
+  .glass-card:hover {
+    @apply -translate-y-0.5 shadow-lg;
+  }
+
+  /* 內凹區塊 */
+  .inset-panel {
+    @apply bg-[#F8FAFC] rounded-xl shadow-inset-soft border border-black/[0.02];
+  }
+
+  /* 主按鈕 */
+  .btn-primary {
+    @apply bg-brand text-white font-medium rounded-[10px] shadow-md shadow-brand/20 transition-all duration-150;
+  }
+  
+  .btn-primary:hover {
+    @apply bg-brand-hover;
+  }
+  
+  .btn-primary:active {
+    @apply translate-y-0.5 scale-[0.98] shadow-sm;
+  }
+
+  /* 仿 iOS Segmented Control */
+  .segmented-control {
+    @apply bg-slate-200 p-1 rounded-xl inline-flex relative;
+  }
+  
+  .segment-btn {
+    @apply px-4 py-1.5 rounded-lg text-sm font-medium text-slate-500 transition-all duration-300 z-10 cursor-pointer select-none;
+  }
+  
+  .segment-btn.active {
+    @apply text-slate-900 bg-white shadow-sm;
+  }
+}
+
+/* 隱藏滾動條 (Kanban 區域) */
+.kanban-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.kanban-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* 基礎全域設定 */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ═══ EOF ═══
+F: src/style.css
+V: 1792903520
+W: webapp-20261026-001#32
+═══ */
