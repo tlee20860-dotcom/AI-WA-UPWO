@@ -41,8 +41,11 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
       <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         <!-- 頂部導覽 (Mobile & Desktop) -->
         <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-6 z-10">
-          <!-- Mobile Logo -->
-          <div class="flex items-center gap-2 md:hidden">
+          <!-- Mobile Logo & Menu Button -->
+          <div class="flex items-center gap-3 md:hidden">
+            <button id="btn-mobile-menu" class="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+            </button>
             <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm">
               <i data-lucide="layers" class="w-5 h-5"></i>
             </div>
@@ -72,6 +75,27 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
         </main>
       </div>
     </div>
+
+    <!-- 手機版側邊選單 (Drawer) -->
+    <div id="mobile-drawer" class="fixed inset-0 z-50 hidden">
+      <div class="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" id="drawer-overlay"></div>
+      <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-2xl transform -translate-x-full transition-transform duration-300 flex flex-col" id="drawer-panel">
+        <div class="h-16 flex items-center px-6 border-b border-slate-100 justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm">
+              <i data-lucide="layers" class="w-5 h-5"></i>
+            </div>
+            <span class="font-bold text-lg text-slate-900">選單</span>
+          </div>
+          <button id="btn-close-drawer" class="p-2 text-slate-400 hover:bg-slate-100 rounded-lg">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+          </button>
+        </div>
+        <nav class="flex-1 py-4 px-3 flex flex-col gap-1 overflow-y-auto" id="mobile-sidebar-nav">
+          <!-- 由 renderNavItems 注入 -->
+        </nav>
+      </aside>
+    </div>
   `;
 
   // 渲染圖示
@@ -83,24 +107,49 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
   // 綁定事件
   document.getElementById('btn-logout')?.addEventListener('click', onLogout);
 
+  // 手機版抽屜選單事件
+  const drawer = document.getElementById('mobile-drawer');
+  const panel = document.getElementById('drawer-panel');
+  const overlay = document.getElementById('drawer-overlay');
+  
+  const openDrawer = () => {
+    drawer.classList.remove('hidden');
+    setTimeout(() => {
+      overlay.classList.add('opacity-100');
+      panel.classList.remove('-translate-x-full');
+    }, 10);
+  };
+  
+  const closeDrawer = () => {
+    overlay.classList.remove('opacity-100');
+    panel.classList.add('-translate-x-full');
+    setTimeout(() => drawer.classList.add('hidden'), 300);
+  };
+
+  document.getElementById('btn-mobile-menu')?.addEventListener('click', openDrawer);
+  document.getElementById('btn-close-drawer')?.addEventListener('click', closeDrawer);
+  overlay?.addEventListener('click', closeDrawer);
+
   // 渲染導覽選單
-  renderNavItems(user.role, onNavigate);
+  renderNavItems(user.role, onNavigate, closeDrawer);
 }
 
 /**
  * 繪製導覽選單項目
  */
-function renderNavItems(role, onNavigate) {
+function renderNavItems(role, onNavigate, closeDrawer) {
   const routes = [
     { id: 'kanban', label: '流水線', icon: 'layout-dashboard', roles: ['admin', 'user'] },
     { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'user'] },
     { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'user'] },
+    { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'user'] },
     { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'user'] },
     { id: 'settings', label: '系統設定', icon: 'settings', roles: ['admin'] }
   ];
 
   const sidebarNav = document.getElementById('sidebar-nav');
   const topControl = document.getElementById('top-segmented-control');
+  const mobileNav = document.getElementById('mobile-sidebar-nav');
 
   routes.forEach(route => {
     if (!route.roles.includes(role)) return;
@@ -118,6 +167,22 @@ function renderNavItems(role, onNavigate) {
       sidebarNav.appendChild(btn);
     }
 
+    // 手機版側邊欄項目
+    if (mobileNav) {
+      const btn = document.createElement('button');
+      btn.className = 'nav-item flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-brand transition-colors';
+      btn.dataset.route = route.id;
+      btn.innerHTML = `
+        <i data-lucide="${route.icon}" class="w-5 h-5"></i>
+        ${route.label}
+      `;
+      btn.addEventListener('click', () => {
+        onNavigate(route.id);
+        if (typeof closeDrawer === 'function') closeDrawer();
+      });
+      mobileNav.appendChild(btn);
+    }
+
     // 頂部 Segmented Control 項目
     if (topControl) {
       const segment = document.createElement('div');
@@ -130,7 +195,7 @@ function renderNavItems(role, onNavigate) {
   });
 
   createIcons({
-    icons: { LayoutDashboard, Table, PieChart, Users, Settings },
+    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers },
     attrs: { class: 'w-5 h-5' }
   });
 }
@@ -141,7 +206,7 @@ function renderNavItems(role, onNavigate) {
  */
 export function updateNavbar(activeRoute) {
   // 更新側邊欄
-  document.querySelectorAll('#sidebar-nav .nav-item').forEach(item => {
+  document.querySelectorAll('.nav-item').forEach(item => {
     if (item.dataset.route === activeRoute) {
       item.classList.add('bg-brand/5', 'text-brand', 'font-bold');
       item.classList.remove('text-slate-600');
@@ -224,6 +289,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792910600
+V: 1792912100
 W: UPGRADE-002
 ═══ */
