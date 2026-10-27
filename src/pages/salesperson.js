@@ -2,12 +2,13 @@ import { AppState } from '../config/state.js';
 import { listenCollection } from '../db/read.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { groupByStatus } from '../domain/stats.js';
-import { createIcons, Inbox, Users, UserCircle } from 'lucide';
+import { createIcons, Inbox, Users, UserCircle, LayoutGrid, List, User, Calendar } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
 let allReps = [];
 let currentRep = null;
+let currentView = 'card'; // 'card' or 'table'
 
 export default {
   async render() {
@@ -18,13 +19,42 @@ export default {
     renderPageLayout({
       title: '銷售員視圖',
       subtitle: '依銷售員檢視名下工單與狀態分佈',
-      headerActions: '',
+      headerActions: `
+        <!-- 視圖切換按鈕 -->
+        <div class="segmented-control">
+          <button id="btn-view-card" class="segment-btn ${currentView === 'card' ? 'active' : ''} flex items-center gap-1">
+            <i data-lucide="layout-grid" class="w-4 h-4"></i> 卡片
+          </button>
+          <button id="btn-view-table" class="segment-btn ${currentView === 'table' ? 'active' : ''} flex items-center gap-1">
+            <i data-lucide="list" class="w-4 h-4"></i> 表格
+          </button>
+        </div>
+      `,
       stats: [],
       controls: '',
       listContainerId: 'salesperson-container'
     });
 
-    // 2. 初始化資料監聽
+    // 2. 綁定視圖切換事件
+    document.getElementById('btn-view-card')?.addEventListener('click', () => {
+      currentView = 'card';
+      document.getElementById('btn-view-card').classList.add('active');
+      document.getElementById('btn-view-table').classList.remove('active');
+      this.renderRepBoard();
+    });
+    document.getElementById('btn-view-table')?.addEventListener('click', () => {
+      currentView = 'table';
+      document.getElementById('btn-view-table').classList.add('active');
+      document.getElementById('btn-view-card').classList.remove('active');
+      this.renderRepBoard();
+    });
+
+    createIcons({
+      icons: { LayoutGrid, List },
+      attrs: { class: 'w-4 h-4' }
+    });
+
+    // 3. 初始化資料監聽
     this.initDataListener();
   },
 
@@ -39,11 +69,11 @@ export default {
     // 提取所有不重複的銷售員
     const repsSet = new Set();
     currentOrders.forEach(o => {
-      (o.salesReps || ['未知銷售員']).forEach(r => repsSet.add(r));
+      (o.salesReps || ['未填寫']).forEach(r => repsSet.add(r));
     });
     allReps = Array.from(repsSet).sort();
 
-    // 預設選中第一個銷售員（若還沒選過或選中的被刪除了）
+    // 預設選中第一個銷售員
     if (allReps.length > 0 && (!currentRep || !allReps.includes(currentRep))) {
       currentRep = allReps[0];
     }
@@ -67,7 +97,7 @@ export default {
     }
 
     container.innerHTML = `
-      <div class="flex flex-col md:flex-row gap-6 h-[calc(100vh-200px)]">
+      <div class="flex flex-col md:flex-row gap-6 h-[calc(100vh-220px)]">
         
         <!-- 左側：銷售員清單 -->
         <div class="w-full md:w-64 flex-shrink-0 flex flex-col bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden">
@@ -85,7 +115,7 @@ export default {
           </div>
         </div>
 
-        <!-- 右側：該銷售員的工單狀態看板 -->
+        <!-- 右側：該銷售員的工單 -->
         <div class="flex-1 flex flex-col min-w-0 bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden">
           <div class="px-5 py-4 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
             <h2 class="font-bold text-slate-800 flex items-center gap-2">
@@ -93,7 +123,7 @@ export default {
               ${currentRep} 的工單
             </h2>
           </div>
-          <div class="flex-1 p-4 overflow-x-auto kanban-scroll flex gap-4 bg-slate-50/30" id="rep-board">
+          <div class="flex-1 p-4 overflow-hidden bg-slate-50/30 flex flex-col" id="rep-board">
             <!-- 由 renderRepBoard 注入 -->
           </div>
         </div>
@@ -118,38 +148,83 @@ export default {
     // 過濾出當前選中銷售員的工單
     const repOrders = currentOrders.filter(o => (o.salesReps || []).includes(currentRep));
     
-    // 依狀態分組
-    const grouped = groupByStatus(repOrders, statuses);
-
-    // 僅顯示有工單的狀態，或者全部顯示（這裡選擇全部顯示，方便看出進度）
-    boardContainer.innerHTML = statuses.map(status => {
-      const statusOrders = grouped[status] || [];
+    if (currentView === 'card') {
+      // 卡片視圖
+      const grouped = groupByStatus(repOrders, statuses);
       
-      return `
-        <div class="w-[280px] flex-shrink-0 flex flex-col gap-2">
-          <div class="flex items-center justify-between px-2">
-            <h3 class="font-semibold text-slate-700 text-sm flex items-center gap-2">
-              <span class="w-2 h-2 rounded-full ${statusOrders.length > 0 ? 'bg-brand' : 'bg-slate-300'}"></span>
-              ${status}
-            </h3>
-            <span class="text-xs font-medium bg-slate-200/80 text-slate-600 px-2 py-0.5 rounded-full">${statusOrders.length}</span>
-          </div>
-          <div class="inset-panel p-2 flex flex-col gap-2 min-h-[150px] flex-1">
-            ${statusOrders.length === 0 ? `
-              <div class="flex items-center justify-center h-full text-slate-300 text-xs py-4">無</div>
-            ` : statusOrders.map(order => `
-              <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-sm">
-                <div class="font-bold text-slate-800 mb-1">${order.id}</div>
-                ${order.details && order.details['客戶'] ? `<div class="text-slate-500 text-xs mb-2">${order.details['客戶']}</div>` : ''}
-                <div class="text-[10px] text-slate-400 flex justify-between items-center mt-2 pt-2 border-t border-slate-50">
-                  <span>交期：${order.dueDate || '-'}</span>
+      boardContainer.innerHTML = `
+        <div class="flex gap-4 overflow-x-auto kanban-scroll h-full pb-2">
+          ${statuses.map(status => {
+            const statusOrders = grouped[status] || [];
+            return `
+              <div class="w-[280px] flex-shrink-0 flex flex-col gap-2">
+                <div class="flex items-center justify-between px-2">
+                  <h3 class="font-semibold text-slate-700 text-sm flex items-center gap-2">
+                    <span class="w-2 h-2 rounded-full ${statusOrders.length > 0 ? 'bg-brand' : 'bg-slate-300'}"></span>
+                    ${status}
+                  </h3>
+                  <span class="text-xs font-medium bg-slate-200/80 text-slate-600 px-2 py-0.5 rounded-full">${statusOrders.length}</span>
+                </div>
+                <div class="inset-panel p-2 flex flex-col gap-2 min-h-[150px] flex-1 overflow-y-auto kanban-scroll">
+                  ${statusOrders.length === 0 ? `
+                    <div class="flex items-center justify-center h-full text-slate-300 text-xs py-4">無</div>
+                  ` : statusOrders.map(order => {
+                    const cat = order.data && order.data.category ? order.data.category : '其他';
+                    return `
+                      <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm text-sm">
+                        <div class="flex justify-between items-start mb-1">
+                          <span class="font-bold text-slate-800">${order.id}</span>
+                          <span class="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">${cat}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-400 flex justify-between items-center mt-2 pt-2 border-t border-slate-50">
+                          <span>交期：${order.dueDate || '-'}</span>
+                        </div>
+                      </div>
+                    `;
+                  }).join('')}
                 </div>
               </div>
-            `).join('')}
+            `;
+          }).join('')}
+        </div>
+      `;
+    } else {
+      // 表格視圖
+      if (repOrders.length === 0) {
+        boardContainer.innerHTML = `<div class="flex items-center justify-center h-full text-slate-400">此銷售員目前無工單</div>`;
+        return;
+      }
+      
+      boardContainer.innerHTML = `
+        <div class="bg-white rounded-xl border border-slate-200/60 shadow-sm overflow-hidden flex flex-col w-full h-full">
+          <div class="overflow-auto flex-1 kanban-scroll">
+            <table class="w-full text-left border-collapse min-w-[600px]">
+              <thead class="sticky top-0 bg-slate-50 z-10 shadow-sm">
+                <tr class="border-b border-slate-200/60 text-sm font-semibold text-slate-600">
+                  <th class="px-6 py-3">工單號碼</th>
+                  <th class="px-6 py-3">類別</th>
+                  <th class="px-6 py-3">當前狀態</th>
+                  <th class="px-6 py-3">交貨日期</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
+                ${repOrders.map(order => {
+                  const cat = order.data && order.data.category ? order.data.category : '-';
+                  return `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                      <td class="px-6 py-3 font-bold text-slate-800">${order.id}</td>
+                      <td class="px-6 py-3"><span class="px-2 py-1 bg-slate-100 rounded text-xs">${cat}</span></td>
+                      <td class="px-6 py-3"><span class="px-2 py-1 bg-brand/10 text-brand rounded text-xs font-medium">${order.status}</span></td>
+                      <td class="px-6 py-3 ${order.dueDate ? 'text-amber-600 font-medium' : 'text-slate-400'}">${order.dueDate || '-'}</td>
+                    </tr>
+                  `;
+                }).join('')}
+              </tbody>
+            </table>
           </div>
         </div>
       `;
-    }).join('');
+    }
   },
 
   bindEvents() {
@@ -159,7 +234,6 @@ export default {
         const newRep = e.currentTarget.dataset.rep;
         if (newRep !== currentRep) {
           currentRep = newRep;
-          // 重新渲染左側選中狀態與右側看板
           this.renderLayout();
         }
       });
@@ -178,7 +252,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/salesperson.js
-V: 1792903515
-W: webapp-20261026-001#27
+F: AI-WA-UPWO/src/pages/salesperson.js
+V: 1792912400
+W: UPGRADE-002
 ═══ */
