@@ -5,12 +5,12 @@ import { createIcons, Layers, Lock, User } from 'lucide';
 
 export default {
   async render() {
-    // 這裡直接渲染到 app-content，不使用 layout.js 的側邊欄
-    const content = document.getElementById('app-content');
+    // 登入頁不經過 App Shell，因此直接渲染到最外層的 app-root
+    const content = document.getElementById('app-root');
     if (!content) return;
 
     content.innerHTML = `
-      <div class="min-h-screen flex items-center justify-center -m-4 sm:-m-6 lg:-m-8 bg-bg">
+      <div class="min-h-screen flex items-center justify-center bg-bg">
         <div class="glass-card w-full max-w-md p-8 sm:p-10 relative overflow-hidden">
           
           <!-- 裝飾背景 -->
@@ -87,15 +87,9 @@ export default {
 
       try {
         // 從 settings 集合獲取使用者清單
-        // 依據 Schema，我們假設 settings 集合中有一個 document 叫做 'users'，或者 users 是其中一個集合
-        // 這裡先嘗試獲取 settings 集合，尋找名為 'users' 的設定，或者直接尋找名為 users 的集合。
-        // 為符合原始 Schema 設計（settings 下的 users 欄位），我們用一個名為 'config' 的 document 或是直接讀取 users 屬性。
-        // 由於尚未實作 settings 頁面，我們先寫一個穩健的獲取邏輯：
         let usersList = [];
         try {
-          // 嘗試從 settings 集合獲取
           const settingsData = await getCollection('settings');
-          // 尋找包含 users 的設定項，或者如果有名為 'users' 的 document
           const userSetting = settingsData.find(s => s.id === 'users' || (s.users && Array.isArray(s.users)));
           if (userSetting) {
             usersList = userSetting.users || [];
@@ -117,7 +111,7 @@ export default {
           showToast(`歡迎回來，${user.username}`, 'success');
           AppState.setUser({ username: user.username, role: user.role });
           
-          // 觸發自訂事件，讓 router 或 main.js 接手後續畫面切換
+          // 觸發自訂事件，讓 router 接手後續畫面切換
           window.dispatchEvent(new CustomEvent('auth:login', { detail: user }));
         } else {
           // 登入失敗
@@ -141,7 +135,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/login.js
-V: 1792903511
-W: webapp-20261026-001#23
+F: AI-WA-UPWO/src/pages/login.js
+V: 1792909602
+W: UPGRADE-002
 ═══ */
