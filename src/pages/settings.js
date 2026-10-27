@@ -6,11 +6,10 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database } from 'lucide';
+import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2 } from 'lucide';
 
 let unsubscribe = null;
 let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [] };
-let currentOrders = [];
 let activeTab = 'statuses'; // 'statuses', 'mapping', 'schema', 'users', 'data', 'import'
 
 export default {
@@ -31,7 +30,7 @@ export default {
       listContainerId: 'settings-container'
     });
 
-    // 2. 優先渲染 UI 骨架（避免等待 Firebase 導致白屏）
+    // 2. 優先渲染 UI 骨架
     this.renderTabs();
 
     // 3. 初始化資料監聽
@@ -39,7 +38,6 @@ export default {
   },
 
   initDataListener() {
-    // 監聽 settings/main 設定檔
     unsubscribe = listenDocument('settings', 'main', async (data) => {
       if (data) {
         currentSettings = {
@@ -49,7 +47,6 @@ export default {
           schema: data.schema || this.getDefaultSchema()
         };
       } else {
-        // 初始化預設設定
         currentSettings = {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
           sales_mapping: [],
@@ -59,10 +56,7 @@ export default {
         await setDocument('settings', 'main', currentSettings);
       }
       
-      // 更新 AppState 中的狀態（讓其他頁面能即時讀取）
       AppState.setStatuses(currentSettings.statuses);
-
-      // 資料載入完成後，重新渲染更新畫面
       this.renderTabs();
     });
   },
@@ -129,7 +123,7 @@ export default {
     document.querySelectorAll('.tab-btn').forEach(btn => {
       btn.addEventListener('click', (e) => {
         activeTab = e.currentTarget.dataset.tab;
-        this.renderTabs(); // 重新渲染以更新 active 樣式
+        this.renderTabs();
       });
     });
   },
@@ -138,28 +132,21 @@ export default {
     const content = document.getElementById('settings-content');
     if (!content) return;
 
-    if (activeTab === 'statuses') {
-      this.renderStatuses(content);
-    } else if (activeTab === 'mapping') {
-      this.renderMapping(content);
-    } else if (activeTab === 'schema') {
-      this.renderSchema(content);
-    } else if (activeTab === 'users') {
-      this.renderUsers(content);
-    } else if (activeTab === 'data') {
-      this.renderDataManagement(content);
-    } else if (activeTab === 'import') {
-      this.renderImport(content);
-    }
+    if (activeTab === 'statuses') this.renderStatuses(content);
+    else if (activeTab === 'mapping') this.renderMapping(content);
+    else if (activeTab === 'schema') this.renderSchema(content);
+    else if (activeTab === 'users') this.renderUsers(content);
+    else if (activeTab === 'data') this.renderDataManagement(content);
+    else if (activeTab === 'import') this.renderImport(content);
   },
 
-  // ═══════════ 狀態管理 ═══════════
+  // ═══════════ 狀態管理（含同步更新） ═══════════
   renderStatuses(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">工序狀態管理</h2>
-          <p class="text-sm text-slate-500 mt-1">可拖曳排序，刪除時會檢查是否有工單使用中。</p>
+          <p class="text-sm text-slate-500 mt-1">可拖曳排序。修改名稱時會同步更新歷史工單。</p>
         </div>
       </div>
       
@@ -172,9 +159,12 @@ export default {
 
       <div class="inset-panel p-4 flex flex-col gap-2" id="status-list">
         ${currentSettings.statuses.map((status, index) => `
-          <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm cursor-move status-item" draggable="true" data-index="${index}">
+          <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm status-item" draggable="true" data-index="${index}">
             <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
-            <span class="flex-1 font-medium text-slate-700">${status}</span>
+            <span class="flex-1 font-medium text-slate-700 status-name">${status}</span>
+            <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-status" data-status="${status}">
+              <i data-lucide="edit-2" class="w-4 h-4"></i>
+            </button>
             <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-status" data-status="${status}">
               <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
@@ -183,9 +173,8 @@ export default {
       </div>
     `;
 
-    createIcons({ icons: { Plus, GripVertical, Trash2 }, attrs: { class: 'w-4 h-4' } });
+    createIcons({ icons: { Plus, GripVertical, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
-    // 新增狀態
     document.getElementById('btn-add-status')?.addEventListener('click', async () => {
       const input = document.getElementById('new-status-input');
       const val = input.value.trim();
@@ -199,11 +188,43 @@ export default {
       showToast('新增成功', 'success');
     });
 
-    // 刪除狀態
+    // 編輯狀態（同步更新歷史工單）
+    document.querySelectorAll('.btn-edit-status').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const oldStatus = e.currentTarget.dataset.status;
+        const newStatus = window.prompt(`修改狀態名稱（原為「${oldStatus}」）：`, oldStatus);
+        
+        if (!newStatus || newStatus.trim() === "" || newStatus === oldStatus) return;
+        const trimmedNewStatus = newStatus.trim();
+
+        showToast('正在更新狀態與歷史資料...', 'info');
+
+        try {
+          // 1. 更新記憶體中的設定
+          const idx = currentSettings.statuses.indexOf(oldStatus);
+          if (idx !== -1) currentSettings.statuses[idx] = trimmedNewStatus;
+          await this.saveSettings();
+
+          // 2. 掃描並更新歷史工單
+          const orders = await getCollection('work_orders');
+          let updateCount = 0;
+          for (const order of orders) {
+            if (order.status === oldStatus) {
+              await updateDocument('work_orders', order.id, { status: trimmedNewStatus });
+              updateCount++;
+            }
+          }
+          showToast(`已修改狀態，並同步更新 ${updateCount} 筆工單`, 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('修改失敗，請稍後再試', 'error');
+        }
+      });
+    });
+
     document.querySelectorAll('.btn-del-status').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const status = e.currentTarget.dataset.status;
-        
         const confirmed = await openConfirm({
           title: '刪除狀態',
           message: `確定要刪除「${status}」嗎？系統將檢查是否有工單處於此狀態。`,
@@ -226,20 +247,17 @@ export default {
           await this.saveSettings();
           showToast('刪除成功', 'success');
         } catch (err) {
-          console.error('Delete status error:', err);
-          showToast('檢查工單失敗，請稍後再試', 'error');
+          showToast('檢查工單失敗', 'error');
         }
       });
     });
 
-    // 拖曳排序邏輯
     this.initDragAndDrop();
   },
 
   initDragAndDrop() {
     const list = document.getElementById('status-list');
     if (!list) return;
-
     let draggedItem = null;
 
     list.querySelectorAll('.status-item').forEach(item => {
@@ -247,26 +265,20 @@ export default {
         draggedItem = this;
         setTimeout(() => this.classList.add('opacity-50'), 0);
       });
-
       item.addEventListener('dragend', function() {
         this.classList.remove('opacity-50');
         draggedItem = null;
-        
-        const newOrder = Array.from(list.querySelectorAll('.status-item')).map(el => el.querySelector('span').textContent);
+        const newOrder = Array.from(list.querySelectorAll('.status-item')).map(el => el.querySelector('.status-name').textContent);
         currentSettings.statuses = newOrder;
-        
-        // 觸發儲存
         const saveHandler = async () => {
           await this.saveSettings();
           showToast('排序已更新', 'success');
         };
         saveHandler.call(this);
       });
-
       item.addEventListener('dragover', function(e) {
         e.preventDefault();
         if (this === draggedItem) return;
-        
         const rect = this.getBoundingClientRect();
         const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
         list.insertBefore(draggedItem, next ? this.nextSibling : this);
@@ -274,19 +286,19 @@ export default {
     });
   },
 
-  // ═══════════ 對照表管理 ═══════════
+  // ═══════════ 對照表管理（含同步更新） ═══════════
   renderMapping(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">銷售員對照表</h2>
-          <p class="text-sm text-slate-500 mt-1">設定別名，讓 Excel 匯入時能正確對應。</p>
+          <p class="text-sm text-slate-500 mt-1">設定別名，匯入時自動對應。新增後會自動同步更新歷史工單。</p>
         </div>
       </div>
 
       <div class="flex gap-2 mb-6">
         <input type="text" id="new-rep-name" class="w-1/3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="正式名稱 (例：王小明)">
-        <input type="text" id="new-rep-alias" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="別名，多個請用逗號隔開 (例：123, S-123)">
+        <input type="text" id="new-rep-alias" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="別名，用逗號隔開 (例：123, S-123)">
         <button id="btn-add-rep" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
           <i data-lucide="plus" class="w-4 h-4"></i> 新增
         </button>
@@ -313,16 +325,47 @@ export default {
     document.getElementById('btn-add-rep')?.addEventListener('click', async () => {
       const name = document.getElementById('new-rep-name').value.trim();
       const aliasStr = document.getElementById('new-rep-alias').value.trim();
-      if (!name) {
-        showToast('請輸入正式名稱', 'error');
+      if (!name || !aliasStr) {
+        showToast('請輸入正式名稱與至少一個別名', 'error');
         return;
       }
       
-      const aliases = aliasStr ? aliasStr.split(',').map(s => s.trim()).filter(Boolean) : [];
+      const aliases = aliasStr.split(',').map(s => s.trim()).filter(Boolean);
       
+      // 儲存對照表
       currentSettings.sales_mapping.push({ name, aliases });
       await this.saveSettings();
-      showToast('新增成功', 'success');
+
+      showToast('正在同步歷史工單...', 'info');
+
+      // 同步更新歷史資料
+      try {
+        const orders = await getCollection('work_orders');
+        let updateCount = 0;
+        
+        for (const order of orders) {
+          let reps = order.salesReps || [];
+          let changed = false;
+          
+          aliases.forEach(alias => {
+            if (reps.includes(alias)) {
+              reps = reps.filter(r => r !== alias); // 移除別名
+              reps.push(name); // 加入正式名稱
+              changed = true;
+            }
+          });
+
+          if (changed) {
+            await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
+            updateCount++;
+          }
+        }
+        
+        showToast(`新增成功，同步更新了 ${updateCount} 筆工單`, 'success');
+      } catch (err) {
+        console.error(err);
+        showToast('對照表已新增，但同步歷史資料失敗', 'error');
+      }
     });
 
     document.querySelectorAll('.btn-del-rep').forEach(btn => {
@@ -330,7 +373,7 @@ export default {
         const idx = e.currentTarget.dataset.index;
         currentSettings.sales_mapping.splice(idx, 1);
         await this.saveSettings();
-        showToast('刪除成功', 'success');
+        showToast('刪除成功（歷史資料保留原名稱）', 'success');
       });
     });
   },
@@ -349,7 +392,7 @@ export default {
       </div>
 
       <div class="flex gap-2 mb-6">
-        <input type="text" id="new-field-label" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新增欄位名稱 (例如：利潤、備註)">
+        <input type="text" id="new-field-label" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新增欄位名稱 (例如：利潤)">
         <button id="btn-add-field" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
           <i data-lucide="plus" class="w-4 h-4"></i> 新增
         </button>
@@ -392,10 +435,7 @@ export default {
         showToast('請輸入欄位名稱', 'error');
         return;
       }
-      
-      // 生成隨機 key 或使用時間戳，避免中文 key
       const key = 'field_' + Date.now().toString(36);
-      
       currentSettings.schema.push({ key, label: val, type: 'string', isSystem: false });
       await this.saveSettings();
       showToast('新增成功', 'success');
@@ -404,15 +444,12 @@ export default {
     document.querySelectorAll('.btn-del-field').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const key = e.currentTarget.dataset.key;
-        
         const confirmed = await openConfirm({
           title: '刪除自訂欄位',
           message: `確定要刪除該欄位嗎？(歷史資料將保留，僅不再顯示)`,
           isDanger: true
         });
-        
         if (!confirmed) return;
-
         currentSettings.schema = currentSettings.schema.filter(f => f.key !== key);
         await this.saveSettings();
         showToast('已刪除欄位', 'success');
@@ -473,7 +510,6 @@ export default {
         showToast('帳號已存在', 'error');
         return;
       }
-      
       currentSettings.users.push({ username: name, password: pass, role });
       await this.saveSettings();
       showToast('新增成功', 'success');
@@ -532,11 +568,10 @@ export default {
         let count = 0;
         
         for (const order of orders) {
-          // 僅更新 Excel 相關欄位為空值，保留 status, dueDate, statusUpdateDate
           await updateDocument('work_orders', order.id, {
             salesReps: ["未填寫"],
             uploadDate: "",
-            data: {}
+            data: { category: order.data?.category || '' } // 保留類別，或視情況清空
           });
           count++;
         }
@@ -592,19 +627,24 @@ export default {
           const parsedOrders = parseExcelData(headers, rows, currentSettings.sales_mapping, currentSettings.statuses[0] || '排產中', currentSettings.schema);
 
           let addedCount = 0;
-          let skippedCount = 0;
+          let updatedCount = 0;
 
           for (const order of parsedOrders) {
             const existing = await getDocument('work_orders', order.id);
             if (existing) {
-              skippedCount++;
+              await updateDocument('work_orders', order.id, {
+                salesReps: order.salesReps,
+                uploadDate: order.uploadDate,
+                data: order.data
+              });
+              updatedCount++;
             } else {
               await setDocument('work_orders', order.id, order);
               addedCount++;
             }
           }
 
-          showToast(`匯入完成！新增 ${addedCount} 筆，跳過 ${skippedCount} 筆重複單號。`, 'success');
+          showToast(`匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`, 'success');
           fileInput.value = ''; 
 
         } catch (error) {
@@ -618,7 +658,7 @@ export default {
 
   async saveSettings() {
     await setDocument('settings', 'main', currentSettings);
-    this.renderTabs(); // 重新渲染以更新畫面
+    this.renderTabs();
   },
 
   destroy() {
@@ -631,6 +671,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792911200
+V: 1792912300
 W: UPGRADE-002
 ═══ */
