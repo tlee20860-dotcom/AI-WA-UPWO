@@ -33,13 +33,39 @@ export function groupBySalesRep(orders) {
   const grouped = {};
 
   orders.forEach(order => {
-    const reps = order.salesReps || ['未知銷售員'];
+    const reps = order.salesReps || ['未填寫'];
     reps.forEach(rep => {
       if (!grouped[rep]) {
         grouped[rep] = [];
       }
       grouped[rep].push(order);
     });
+  });
+
+  return grouped;
+}
+
+/**
+ * 將工單陣列依「類別 (發票前兩碼)」分組
+ * @param {Array<Object>} orders 工單陣列
+ * @returns {Object} 以類別為 key 的物件，value 為該類別的工單陣列
+ */
+export function groupByCategory(orders) {
+  const grouped = {};
+
+  orders.forEach(order => {
+    // 優先從 data.category 抓取，若無則嘗試從 id 擷取
+    let category = order.data && order.data['category'];
+    
+    if (!category) {
+      const match = String(order.id).match(/^[a-zA-Z]+/);
+      category = match ? match[0].toUpperCase() : '其他';
+    }
+
+    if (!grouped[category]) {
+      grouped[category] = [];
+    }
+    grouped[category].push(order);
   });
 
   return grouped;
@@ -94,7 +120,7 @@ export function generatePivotTable(orders, statuses = [], salesReps = []) {
   // 填充數據
   orders.forEach(order => {
     const status = order.status || '未知狀態';
-    const reps = order.salesReps || ['未知銷售員'];
+    const reps = order.salesReps || ['未填寫'];
     
     reps.forEach(rep => {
       // 如果該銷售員不在表頭清單中，動態加入
@@ -112,7 +138,7 @@ export function generatePivotTable(orders, statuses = [], salesReps = []) {
 }
 
 /* ═══ EOF ═══
-F: src/domain/stats.js
-V: 1792903506
-W: webapp-20261026-001#18
+F: AI-WA-UPWO/src/domain/stats.js
+V: 1792911600
+W: UPGRADE-002
 ═══ */
