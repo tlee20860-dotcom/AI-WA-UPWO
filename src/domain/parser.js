@@ -5,11 +5,11 @@
  * @returns {Array<string>} 標準化後的銷售員名稱陣列
  */
 export function normalizeSalesRep(repString, salesMapping) {
-  if (!repString) return ["未知銷售員"];
+  if (!repString || String(repString).trim() === "") return ["未填寫"];
   
   // 依 "/" 分割並去除空白
   const rawNames = String(repString).split('/').map(s => s.trim()).filter(Boolean);
-  if (rawNames.length === 0) return ["未知銷售員"];
+  if (rawNames.length === 0) return ["未填寫"];
 
   const resultSet = new Set();
 
@@ -28,13 +28,41 @@ export function normalizeSalesRep(repString, salesMapping) {
       }
     }
 
-    // 若無對應，則直接使用原名（或歸為未知，視業務需求。這裡保留原名以免遺失資訊）
+    // 若無對應，則直接使用原名
     if (!matched) {
       resultSet.add(rawName);
     }
   }
 
   return Array.from(resultSet);
+}
+
+/**
+ * 將 Excel 日期序列號轉換為 YYYY-MM-DD 格式
+ * @param {any} val 原始數值或字串
+ * @returns {string} 格式化後的日期字串
+ */
+function formatExcelDate(val) {
+  if (!val) return "";
+  
+  // 如果已經是正常的日期字串 (包含 - 或 /)
+  if (typeof val === 'string' && (val.includes('-') || val.includes('/'))) {
+    return val.trim();
+  }
+
+  // 處理 Excel 序列號 (通常介於 20000 到 60000 之間)
+  const num = Number(val);
+  if (!isNaN(num) && num > 20000 && num < 80000) {
+    // Excel 起始日為 1899-12-30
+    const date = new Date((num - 25569) * 86400 * 1000);
+    // 檢查是否為有效日期
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
+    }
+  }
+
+  // 其他無法解析的，直接轉字串回傳
+  return String(val).trim();
 }
 
 /**
@@ -50,10 +78,14 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   const nowStr = new Date().toISOString();
   const parsedOrders = [];
 
-  // 1. 建立表頭索引映射：根據 schema 的 label 去尋找 Excel 對應的欄位索引
+  // 1. 建立表頭索引映射：強制清洗表頭的空白、換行與全形空白
+  const cleanStr = (s) => String(s || '').replace(/[\s\u3000]+/g, '').trim();
+  const cleanHeaders = headers.map(cleanStr);
+
   const columnMap = {};
   schema.forEach(field => {
-    const idx = headers.findIndex(h => h && String(h).trim() === field.label.trim());
+    const targetLabel = cleanStr(field.label);
+    const idx = cleanHeaders.findIndex(h => h === targetLabel);
     if (idx !== -1) {
       columnMap[field.key] = idx;
     }
@@ -66,24 +98,26 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
   // 3. 逐列解析
   for (const row of rows) {
-    // 跳過空行
+    // 跳過完全空白的列（防呆）
     if (!row || row.length === 0) continue;
 
-    const orderId = String(row[columnMap['id']] || '').trim();
+    const rawIdVal = row[columnMap['id']];
+    const orderId = rawIdVal !== undefined && rawIdVal !== null ? String(rawIdVal).trim() : "";
     
-    // 跳過沒有工單號的行
-    if (!orderId) continue;
+    // 💡 核心邏輯：遇到 A 欄（工單號碼）為空，直接中斷迴圈（完美剔除尾部的總計與備註）
+    if (!orderId) {
+      break;
+    }
 
-    // 解析日期 (若無對應欄位則給予目前時間)
+    // 解析日期（轉換 Excel 序列號）
     let uploadDate = nowStr;
-    if (columnMap['uploadDate'] !== undefined && row[columnMap['uploadDate']]) {
-      // 這裡簡化處理，保留原始字串或轉 ISO
-      uploadDate = String(row[columnMap['uploadDate']]).trim();
+    if (columnMap['uploadDate'] !== undefined && row[columnMap['uploadDate']] !== undefined) {
+      uploadDate = formatExcelDate(row[columnMap['uploadDate']]);
     }
 
     // 解析銷售員
     let rawSalesRep = "";
-    if (columnMap['salesRep'] !== undefined && row[columnMap['salesRep']]) {
+    if (columnMap['salesRep'] !== undefined && row[columnMap['salesRep']] !== undefined) {
       rawSalesRep = String(row[columnMap['salesRep']]);
     }
     const normalizedReps = normalizeSalesRep(rawSalesRep, salesMapping);
@@ -103,7 +137,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       status: defaultStatus,
       salesReps: normalizedReps,
       uploadDate: uploadDate,
-      statusUpdateDate: nowStr,
+      statusUpdateDate: nowStr.split('T')[0], // 狀態更新日預設為今天
       dueDate: "", // 交期依需求為匯入後手動輸入
       data: data   // 動態欄位資料
     });
@@ -114,6 +148,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1792910900
+V: 1792911100
 W: UPGRADE-002
 ═══ */
