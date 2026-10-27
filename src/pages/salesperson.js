@@ -46,7 +46,7 @@ export default {
       currentOrders = orders;
       // 如果第一次載入，自動選中第一個銷售員
       if (!currentRep) {
-        const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫'])))].sort();
+        const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))].sort();
         if (reps.length > 0) currentRep = reps[0];
       }
       this.updateUI();
@@ -55,7 +55,7 @@ export default {
 
   updateUI() {
     // 提取所有銷售員
-    const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫'])))].sort();
+    const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))].sort();
     
     // 若當前選中的銷售員不存在了，重置為第一個
     if (reps.length > 0 && !reps.includes(currentRep)) {
@@ -110,6 +110,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792914300
+V: 1792914400
 W: UPGRADE-002
 ═══ */
