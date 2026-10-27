@@ -92,9 +92,10 @@ export default {
 
         showToast('解析中，請稍候...', 'info');
 
-        // 取得目前的設定檔（對照表與狀態）
+        // 取得目前的設定檔（對照表、狀態與動態 Schema）
         let salesMapping = [];
         let currentStatuses = AppState.getStatuses() || ['排產中'];
+        let currentSchema = [];
         
         try {
           const settingsDoc = await getDocument('settings', 'main');
@@ -103,13 +104,14 @@ export default {
             if (settingsDoc.statuses && settingsDoc.statuses.length > 0) {
               currentStatuses = settingsDoc.statuses;
             }
+            currentSchema = settingsDoc.schema || [];
           }
         } catch (err) {
           console.warn('無法讀取設定檔，將使用預設值', err);
         }
 
         // 呼叫 domain/parser.js 進行解析
-        const parsedOrders = parseExcelData(headers, rows, salesMapping, currentStatuses[0]);
+        const parsedOrders = parseExcelData(headers, rows, salesMapping, currentStatuses[0], currentSchema);
 
         // 防覆寫檢查與寫入
         let addedCount = 0;
@@ -132,7 +134,7 @@ export default {
 
       } catch (error) {
         console.error('Import Error:', error);
-        showToast('匯入失敗，請檢查檔案格式', 'error');
+        showToast(`匯入失敗：${error.message || '請檢查檔案格式'}`, 'error');
         e.target.value = '';
       }
     };
@@ -225,6 +227,9 @@ export default {
     const uploadDate = order.uploadDate ? order.uploadDate.split('T')[0] : '';
     const salesReps = order.salesReps ? order.salesReps.join(', ') : '無';
     
+    // 動態抓取客戶名稱（優先中文，其次英文）
+    const customerName = order.data ? (order.data['customerNameZh'] || order.data['customerNameEn'] || '') : '';
+    
     return `
       <div class="glass-card p-4 relative group card-item" data-id="${order.id}" data-current-status="${order.status}">
         <div class="flex justify-between items-start mb-2">
@@ -233,7 +238,7 @@ export default {
         </div>
         
         <div class="flex flex-col gap-1.5 mb-3">
-          ${order.details && order.details['客戶'] ? `<div class="text-sm text-slate-600">客戶：${order.details['客戶']}</div>` : ''}
+          ${customerName ? `<div class="text-sm text-slate-600">客戶：${customerName}</div>` : ''}
           <div class="flex items-center gap-1.5 text-xs text-slate-500">
             <i data-lucide="user" class="w-3.5 h-3.5"></i> ${salesReps}
           </div>
@@ -339,6 +344,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792910700
+V: 1792911000
 W: UPGRADE-002
 ═══ */
