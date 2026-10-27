@@ -1,9 +1,8 @@
 import { initRouter } from './router.js';
-import { createIcons } from 'lucide';
 
 /**
  * 系統啟動入口
- * 負責等待 DOM 載入完成後，初始化路由與圖示
+ * 負責等待 DOM 載入完成後，初始化路由
  */
 document.addEventListener('DOMContentLoaded', () => {
   const root = document.getElementById('app-root');
@@ -13,17 +12,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // 顯示初始載入動畫 (可選，這裡假設 index.html 有預設的 loading 遮罩)
+  // 隱藏初始載入動畫
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     loadingEl.classList.add('hidden');
   }
 
   try {
-    // 初始化 Lucide 圖示
-    createIcons();
-
     // 啟動路由系統
+    // 註：全域 createIcons 已移除，圖示由各頁面或佈局元件自行呼叫 createIcons 處理
     initRouter();
     
     console.log('[System] UPGRADE-WO 系統啟動成功。');
@@ -41,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 /* ═══ EOF ═══
-F: src/engine/main.js
-V: 1792903518
-W: webapp-20261026-001#30
+F: AI-WA-UPWO/src/engine/main.js
+V: 1792909601
+W: UPGRADE-002
 ═══ */
