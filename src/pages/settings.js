@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 import { AppState } from '../config/state.js';
-import { listenDocument, getDocument } from '../db/read.js';
+import { listenDocument, getDocument, getCollection } from '../db/read.js';
 import { setDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
@@ -31,6 +31,10 @@ export default {
       listContainerId: 'settings-container'
     });
 
+    // 2. 優先渲染 UI 骨架（避免等待 Firebase 導致白屏）
+    this.renderTabs();
+
+    // 3. 初始化資料監聽
     this.initDataListener();
   },
 
@@ -56,9 +60,7 @@ export default {
       // 更新 AppState 中的狀態（讓其他頁面能即時讀取）
       AppState.setStatuses(currentSettings.statuses);
 
-      // 同步抓取工單資料（用於刪除狀態時的檢查）
-      const orders = await getDocument('settings', 'dummy'); // 這裡只是借用非同步
-      
+      // 資料載入完成後，重新渲染更新畫面
       this.renderTabs();
     });
   },
@@ -159,7 +161,7 @@ export default {
     createIcons({ icons: { Plus, GripVertical, Trash2 }, attrs: { class: 'w-4 h-4' } });
 
     // 新增狀態
-    document.getElementById('btn-add-status').addEventListener('click', async () => {
+    document.getElementById('btn-add-status')?.addEventListener('click', async () => {
       const input = document.getElementById('new-status-input');
       const val = input.value.trim();
       if (!val) return;
@@ -177,9 +179,6 @@ export default {
       btn.addEventListener('click', async (e) => {
         const status = e.currentTarget.dataset.status;
         
-        // 檢查是否有工單使用此狀態
-        // 由於需要精確檢查，這裡先借用全域的 listenCollection 資料，若無則臨時抓取
-        // 簡化處理：直接向資料庫查詢（或依賴之前載入的資料，但設定頁可能沒載入 orders）
         const confirmed = await openConfirm({
           title: '刪除狀態',
           message: `確定要刪除「${status}」嗎？系統將檢查是否有工單處於此狀態。`,
@@ -189,8 +188,7 @@ export default {
 
         if (!confirmed) return;
 
-        // 檢查工單
-        import('../db/read.js').then(async ({ getCollection }) => {
+        try {
           const orders = await getCollection('work_orders');
           const hasOrders = orders.some(o => o.status === status);
           
@@ -199,11 +197,13 @@ export default {
             return;
           }
 
-          // 執行刪除
           currentSettings.statuses = currentSettings.statuses.filter(s => s !== status);
           await this.saveSettings();
           showToast('刪除成功', 'success');
-        });
+        } catch (err) {
+          console.error('Delete status error:', err);
+          showToast('檢查工單失敗，請稍後再試', 'error');
+        }
       });
     });
 
@@ -226,10 +226,16 @@ export default {
       item.addEventListener('dragend', function() {
         this.classList.remove('opacity-50');
         draggedItem = null;
-        // 取得排序後的結果並儲存
+        
         const newOrder = Array.from(list.querySelectorAll('.status-item')).map(el => el.querySelector('span').textContent);
         currentSettings.statuses = newOrder;
-        window.dispatchEvent(new CustomEvent('save-settings-drag'));
+        
+        // 觸發儲存
+        const saveHandler = async () => {
+          await this.saveSettings();
+          showToast('排序已更新', 'success');
+        };
+        saveHandler.call(this);
       });
 
       item.addEventListener('dragover', function(e) {
@@ -241,14 +247,6 @@ export default {
         list.insertBefore(draggedItem, next ? this.nextSibling : this);
       });
     });
-
-    // 綁定拖曳結束的儲存事件
-    const saveHandler = async () => {
-      window.removeEventListener('save-settings-drag', saveHandler);
-      await this.saveSettings();
-      showToast('排序已更新', 'success');
-    };
-    window.addEventListener('save-settings-drag', saveHandler);
   },
 
   // ═══════════ 對照表管理 ═══════════
@@ -287,7 +285,7 @@ export default {
 
     createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
 
-    document.getElementById('btn-add-rep').addEventListener('click', async () => {
+    document.getElementById('btn-add-rep')?.addEventListener('click', async () => {
       const name = document.getElementById('new-rep-name').value.trim();
       const aliasStr = document.getElementById('new-rep-alias').value.trim();
       if (!name) {
@@ -352,7 +350,7 @@ export default {
 
     createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
 
-    document.getElementById('btn-add-user').addEventListener('click', async () => {
+    document.getElementById('btn-add-user')?.addEventListener('click', async () => {
       const name = document.getElementById('new-user-name').value.trim();
       const pass = document.getElementById('new-user-pass').value.trim();
       const role = document.getElementById('new-user-role').value;
@@ -399,7 +397,7 @@ export default {
 
     const fileInput = document.getElementById('excel-input');
     
-    fileInput.addEventListener('change', async (e) => {
+    fileInput?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
       
@@ -411,7 +409,6 @@ export default {
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
           
-          // 轉成 array of arrays
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
           if (jsonData.length < 2) {
             showToast('Excel 檔案沒有資料', 'error');
@@ -423,10 +420,8 @@ export default {
 
           showToast('解析中，請稍候...', 'info');
 
-          // 呼叫 domain/parser.js 進行解析
           const parsedOrders = parseExcelData(headers, rows, currentSettings.sales_mapping, currentSettings.statuses[0] || '排產中');
 
-          // 防覆寫檢查與寫入
           let addedCount = 0;
           let skippedCount = 0;
 
@@ -441,7 +436,7 @@ export default {
           }
 
           showToast(`匯入完成！新增 ${addedCount} 筆，跳過 ${skippedCount} 筆重複單號。`, 'success');
-          fileInput.value = ''; // 清空 input
+          fileInput.value = ''; 
 
         } catch (error) {
           console.error('Import Error:', error);
@@ -466,7 +461,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/settings.js
-V: 1792903516
-W: webapp-20261026-001#28
+F: AI-WA-UPWO/src/pages/settings.js
+V: 1792910500
+W: UPGRADE-002
 ═══ */
