@@ -6,12 +6,12 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X } from 'lucide';
+import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List } from 'lucide';
 
 let unsubscribe = null;
-let currentSettings = { statuses: [], sales_mapping: [], users: [] };
+let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [] };
 let currentOrders = [];
-let activeTab = 'statuses'; // 'statuses', 'mapping', 'users', 'import'
+let activeTab = 'statuses'; // 'statuses', 'mapping', 'users', 'schema', 'import'
 
 export default {
   async render() {
@@ -24,7 +24,7 @@ export default {
     // 1. 渲染頁面骨架
     renderPageLayout({
       title: '系統設定',
-      subtitle: '管理工序狀態、銷售員對照表與系統帳號',
+      subtitle: '管理工序狀態、銷售員對照表、系統欄位與帳號',
       headerActions: '',
       stats: [],
       controls: '',
@@ -45,14 +45,16 @@ export default {
         currentSettings = {
           statuses: data.statuses || ['排產中'],
           sales_mapping: data.sales_mapping || [],
-          users: data.users || [{ username: 'admin', password: '123456', role: 'admin' }]
+          users: data.users || [{ username: 'admin', password: '123456', role: 'admin' }],
+          schema: data.schema || this.getDefaultSchema()
         };
       } else {
         // 初始化預設設定
         currentSettings = {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
           sales_mapping: [],
-          users: [{ username: 'admin', password: '123456', role: 'admin' }]
+          users: [{ username: 'admin', password: '123456', role: 'admin' }],
+          schema: this.getDefaultSchema()
         };
         await setDocument('settings', 'main', currentSettings);
       }
@@ -63,6 +65,18 @@ export default {
       // 資料載入完成後，重新渲染更新畫面
       this.renderTabs();
     });
+  },
+
+  getDefaultSchema() {
+    return [
+      { key: 'id', label: '發票', type: 'string', isSystem: true },
+      { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
+      { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
+      { key: 'amount', label: '金額', type: 'number', isSystem: false },
+      { key: 'category', label: '類別', type: 'string', isSystem: false },
+      { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false },
+      { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false }
+    ];
   },
 
   renderTabs() {
@@ -80,6 +94,9 @@ export default {
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
             <i data-lucide="users" class="w-4 h-4"></i> 對照表管理
           </button>
+          <button class="tab-btn ${activeTab === 'schema' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="schema">
+            <i data-lucide="list" class="w-4 h-4"></i> 欄位管理
+          </button>
           <button class="tab-btn ${activeTab === 'users' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="users">
             <i data-lucide="shield" class="w-4 h-4"></i> 帳號管理
           </button>
@@ -96,7 +113,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Shield, FileSpreadsheet },
+      icons: { Tag, Users, Shield, FileSpreadsheet, List },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -121,6 +138,8 @@ export default {
       this.renderStatuses(content);
     } else if (activeTab === 'mapping') {
       this.renderMapping(content);
+    } else if (activeTab === 'schema') {
+      this.renderSchema(content);
     } else if (activeTab === 'users') {
       this.renderUsers(content);
     } else if (activeTab === 'import') {
@@ -310,6 +329,91 @@ export default {
     });
   },
 
+  // ═══════════ 欄位管理 ═══════════
+  renderSchema(container) {
+    const sysFields = currentSettings.schema.filter(f => f.isSystem);
+    const customFields = currentSettings.schema.filter(f => !f.isSystem);
+
+    container.innerHTML = `
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">動態欄位管理</h2>
+          <p class="text-sm text-slate-500 mt-1">定義系統欄位，並對應 Excel 表頭。系統核心欄位不可刪除。</p>
+        </div>
+      </div>
+
+      <div class="flex gap-2 mb-6">
+        <input type="text" id="new-field-label" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新增欄位名稱 (例如：利潤、備註)">
+        <button id="btn-add-field" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
+          <i data-lucide="plus" class="w-4 h-4"></i> 新增
+        </button>
+      </div>
+
+      <div class="mb-4 text-sm font-semibold text-slate-600">系統核心欄位（不可刪除）</div>
+      <div class="flex flex-col gap-2 mb-8">
+        ${sysFields.map(f => `
+          <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+            <div class="w-1/3 font-bold text-slate-700">${f.label}</div>
+            <div class="w-1/3 text-slate-400 font-mono text-xs">${f.key}</div>
+            <div class="w-1/3 text-right text-slate-400 text-xs">系統保護</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="mb-4 text-sm font-semibold text-slate-600">自訂欄位</div>
+      <div class="flex flex-col gap-2">
+        ${customFields.length === 0 ? '<div class="text-slate-400 text-sm py-2">目前尚無自訂欄位</div>' : ''}
+        ${customFields.map((f, index) => `
+          <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+            <div class="w-1/3 font-bold text-slate-800">${f.label}</div>
+            <div class="w-1/3 text-slate-500 font-mono text-xs">${f.key}</div>
+            <div class="w-1/3 text-right">
+              <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-field" data-key="${f.key}">
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+
+    createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
+
+    document.getElementById('btn-add-field')?.addEventListener('click', async () => {
+      const input = document.getElementById('new-field-label');
+      const val = input.value.trim();
+      if (!val) {
+        showToast('請輸入欄位名稱', 'error');
+        return;
+      }
+      
+      // 生成隨機 key 或使用時間戳，避免中文 key
+      const key = 'field_' + Date.now().toString(36);
+      
+      currentSettings.schema.push({ key, label: val, type: 'string', isSystem: false });
+      await this.saveSettings();
+      showToast('新增成功', 'success');
+    });
+
+    document.querySelectorAll('.btn-del-field').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const key = e.currentTarget.dataset.key;
+        
+        const confirmed = await openConfirm({
+          title: '刪除自訂欄位',
+          message: `確定要刪除該欄位嗎？(歷史資料將保留，僅不再顯示)`,
+          isDanger: true
+        });
+        
+        if (!confirmed) return;
+
+        currentSettings.schema = currentSettings.schema.filter(f => f.key !== key);
+        await this.saveSettings();
+        showToast('已刪除欄位', 'success');
+      });
+    });
+  },
+
   // ═══════════ 帳號管理 ═══════════
   renderUsers(container) {
     container.innerHTML = `
@@ -389,7 +493,7 @@ export default {
           <i data-lucide="file-spreadsheet" class="w-8 h-8"></i>
         </div>
         <h3 class="text-lg font-bold text-slate-800 mb-2">點擊或拖曳 Excel 檔案至此</h3>
-        <p class="text-sm text-slate-500 max-w-sm">系統將會自動解析 A 欄(單號) 與 G 欄(銷售員)，並存入資料庫。若單號已存在，則會自動跳過。</p>
+        <p class="text-sm text-slate-500 max-w-sm">系統將會依據「欄位管理」中的設定，自動解析 Excel 標題並存入資料庫。若單號已存在，則會自動跳過。</p>
       </div>
     `;
 
@@ -420,7 +524,7 @@ export default {
 
           showToast('解析中，請稍候...', 'info');
 
-          const parsedOrders = parseExcelData(headers, rows, currentSettings.sales_mapping, currentSettings.statuses[0] || '排產中');
+          const parsedOrders = parseExcelData(headers, rows, currentSettings.sales_mapping, currentSettings.statuses[0] || '排產中', currentSettings.schema);
 
           let addedCount = 0;
           let skippedCount = 0;
@@ -440,7 +544,7 @@ export default {
 
         } catch (error) {
           console.error('Import Error:', error);
-          showToast('匯入失敗，請檢查檔案格式', 'error');
+          showToast(`匯入失敗：${error.message || '請檢查檔案格式'}`, 'error');
         }
       };
       reader.readAsArrayBuffer(file);
@@ -462,6 +566,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792910500
+V: 1792910800
 W: UPGRADE-002
 ═══ */
