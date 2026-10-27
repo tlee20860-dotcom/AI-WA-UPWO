@@ -32,14 +32,16 @@ export default {
       listContainerId: 'table-container'
     });
 
+    // 2. 先綁定事件（避免 createIcons 發生錯誤時中斷）
+    this.bindHeaderEvents();
+
+    // 3. 渲染圖示
     createIcons({
       icons: { Download, FileText },
       attrs: { class: 'w-4 h-4' }
     });
 
-    this.bindHeaderEvents();
-
-    // 2. 初始化資料監聽
+    // 4. 初始化資料監聽
     this.initDataListener();
   },
 
@@ -167,7 +169,7 @@ export default {
 };
 
 /* ═══ EOF ═══
-F: src/pages/table.js
-V: 1792903513
-W: webapp-20261026-001#25
+F: AI-WA-UPWO/src/pages/table.js
+V: 1792910300
+W: UPGRADE-002
 ═══ */
