@@ -1,4 +1,4 @@
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings } from 'lucide';
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList } from 'lucide';
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
@@ -215,14 +215,15 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
     </div>
   `;
 
-  // 重新渲染圖示
+  // 重新渲染圖示（補上缺少的參數）
   createIcons({
+    icons: { Activity, ClipboardList },
     attrs: { class: 'w-4 h-4' }
   });
 }
 
 /* ═══ EOF ═══
-F: src/ui/layout.js
-V: 1792903510
-W: webapp-20261026-001#22
+F: AI-WA-UPWO/src/ui/layout.js
+V: 1792910600
+W: UPGRADE-002
 ═══ */
