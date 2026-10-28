@@ -10,12 +10,13 @@ export const ROUTES = {
   KANBAN: 'kanban',
   TABLE: 'table',
   OVERVIEW: 'overview',
+  CATEGORY: 'category',
   SALESPERSON: 'salesperson',
   SETTINGS: 'settings'
 };
 
 /* ═══ EOF ═══
-F: src/config/constants.js
-V: 1792903522
-W: webapp-20261026-001#34
+F: AI-WA-UPWO/src/config/constants.js
+V: 1792916600
+W: UPGRADE-002
 ═══ */
