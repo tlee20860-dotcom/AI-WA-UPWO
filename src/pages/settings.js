@@ -51,12 +51,12 @@ export default {
         
         // 自動補齊核心欄位與視圖配置
         const requiredSysFields = [
-          { key: 'id', label: '發票', type: 'string', isSystem: true },
-          { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
-          { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
-          { key: 'status', label: '生產進度', type: 'string', isSystem: true },
-          { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true },
-          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true }
+          { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
+          { key: 'uploadDate', label: '日期', type: 'date', isSystem: true, isEditable: false },
+          { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true, isEditable: true },
+          { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
+          { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
+          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false }
         ];
 
         requiredSysFields.forEach(req => {
@@ -104,16 +104,16 @@ export default {
 
   getDefaultSchema() {
     return [
-      { key: 'id', label: '發票', type: 'string', isSystem: true },
-      { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
-      { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
-      { key: 'status', label: '生產進度', type: 'string', isSystem: true },
-      { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true },
-      { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true },
-      { key: 'amount', label: '金額', type: 'number', isSystem: false },
-      { key: 'customCategory', label: '類別', type: 'string', isSystem: false },
-      { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false },
-      { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false }
+      { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
+      { key: 'uploadDate', label: '日期', type: 'date', isSystem: true, isEditable: false },
+      { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true, isEditable: true },
+      { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
+      { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
+      { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false },
+      { key: 'amount', label: '金額', type: 'number', isSystem: false, isEditable: true },
+      { key: 'customCategory', label: '類別', type: 'string', isSystem: false, isEditable: true },
+      { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false, isEditable: true },
+      { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false, isEditable: true }
     ];
   },
 
@@ -411,6 +411,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792919500
+V: 1792921500
 W: UPGRADE-004
 ═══ */
