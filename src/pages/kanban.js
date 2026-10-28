@@ -30,7 +30,7 @@ export default {
     } catch (err) {}
 
     renderPageLayout({
-      title: '流水線進度控制台',
+      title: '生產進度控制台',
       subtitle: '即時追蹤工單狀態與生產進度',
       headerActions: `
         <div class="flex items-center gap-3">
@@ -104,17 +104,16 @@ export default {
       visibleFields: schema.filter(f => (viewConfig['kanban'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'kanban',
-      onAction: async (action, id) => {
+      onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
             await deleteDocument('work_orders', id);
             showToast('已刪除', 'success');
           }
         } else if (action === 'flow') {
-          const newStatus = window.prompt('輸入目標狀態：');
           if (newStatus) {
             await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: new Date().toISOString() });
-            showToast('已流轉', 'success');
+            showToast('已更新生產進度', 'success');
           }
         }
       }
@@ -168,6 +167,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792914000
+V: 1792914700
 W: UPGRADE-002
 ═══ */
