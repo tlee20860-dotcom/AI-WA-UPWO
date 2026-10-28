@@ -5,7 +5,7 @@ import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox } from 'luc
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
  */
 export function formatExcelDate(val) {
-  if (!val) return "-";
+  if (!val) return "";
   if (typeof val === 'string') {
     if (val.includes('T')) return val.split('T')[0];
     if (val.includes('-') || val.includes('/')) return val.trim();
@@ -43,8 +43,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   let displayFields = visibleFields.filter(f => f.isVisible);
   if (displayFields.length === 0) {
     displayFields = [
-      { key: 'id', label: '發票', isVisible: true },
-      { key: 'status', label: '生產進度', isVisible: true }
+      { key: 'id', label: '發票', isVisible: true, isEditable: false },
+      { key: 'status', label: '生產進度', isVisible: true, isEditable: false }
     ];
   }
 
@@ -99,13 +99,28 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       }
     });
 
-    // 改變事件 (狀態下拉選單)
+    // 改變事件 (狀態下拉選單 & 行內編輯)
     document.addEventListener('change', (e) => {
+      // 狀態變更
       const select = e.target.closest('select[data-action="change-status"]');
       if (select) {
         const id = select.dataset.id;
         const newStatus = select.value;
         if (onAction) onAction('status_change', id, newStatus);
+        return;
+      }
+
+      // 行內編輯（日期或文字）
+      const inlineInput = e.target.closest('input[data-action="inline-edit"]');
+      if (inlineInput) {
+        const id = inlineInput.dataset.id;
+        const key = inlineInput.dataset.key;
+        const value = inlineInput.value;
+        
+        // 拋出全域事件，由 order-view-editor.js 接手處理存檔
+        window.dispatchEvent(new CustomEvent('inline-edit', { 
+          detail: { id, key, value } 
+        }));
       }
     });
 
@@ -154,6 +169,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         <div class="glass-card p-4 flex flex-col gap-2">
           ${displayFields.map(f => {
             const val = getOrderValue(order, f.key);
+            
             if (f.key === 'status') {
               return `
                 <div class="text-sm flex flex-col gap-1">
@@ -164,6 +180,22 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                 </div>
               `;
             }
+            
+            // 判斷是否可編輯
+            if (f.isEditable) {
+              const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
+              // 若為日期，需先格式化，避免瀏覽器不支援
+              const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
+              
+              return `
+                <div class="text-sm flex flex-col gap-1">
+                  <span class="text-slate-400">${f.label}:</span>
+                  <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
+                    class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors">
+                </div>
+              `;
+            }
+            
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
           }).join('')}
           ${isAdmin ? `
@@ -205,6 +237,20 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       </td>
                     `;
                   }
+                  
+                  // 判斷是否可編輯
+                  if (f.isEditable) {
+                    const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
+                    const displayVal = f.type === 'date' ? formatExcelDate(getOrderValue(order, f.key)) : getOrderValue(order, f.key);
+                    
+                    return `
+                      <td class="px-2 py-2 whitespace-nowrap">
+                        <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
+                          class="w-full px-2 py-1.5 bg-transparent border border-transparent hover:border-slate-200 focus:border-brand focus:bg-white rounded-lg text-sm transition-colors outline-none">
+                      </td>
+                    `;
+                  }
+                  
                   return `<td class="px-4 py-3 whitespace-nowrap">${getOrderValue(order, f.key) || '-'}</td>`;
                 }).join('')}
                 ${isAdmin ? `
@@ -232,7 +278,7 @@ function getOrderValue(order, key) {
     return formatExcelDate(order[key]);
   }
   if (key === 'status') {
-    return order.status || '未知'; // 這裡只回傳文字供排序或篩選用
+    return order.status || '未知'; 
   }
   if (order.data && order.data[key] !== undefined) {
     return order.data[key];
@@ -242,6 +288,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792916100
-W: UPGRADE-002
+V: 1792921000
+W: UPGRADE-004
 ═══ */
