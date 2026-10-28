@@ -4,7 +4,7 @@ import { listenDocument, getDocument, getCollection } from '../db/read.js';
 import { setDocument, updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
-import { openConfirm } from '../ui/modal.js';
+import { openConfirm, openModal } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
 import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check } from 'lucide';
 
@@ -62,7 +62,6 @@ export default {
           }
         });
 
-        // 確保每個頁面的視圖配置有基本欄位
         Object.keys(currentSettings.view_configs).forEach(page => {
           if (!currentSettings.view_configs[page].includes('status')) {
             currentSettings.view_configs[page].unshift('status');
@@ -74,7 +73,6 @@ export default {
           }
         });
 
-        // 檢查是否有 overview 配置，若無則補上
         if (!currentSettings.view_configs['overview']) {
           currentSettings.view_configs['overview'] = ['id', 'status', 'salesRep', 'dueDate'];
           needSave = true;
@@ -477,50 +475,89 @@ export default {
       }
     });
 
+    // 修改為單一表單彈窗
     document.querySelectorAll('.btn-edit-rep').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         const idx = e.currentTarget.dataset.index;
         const oldRep = currentSettings.sales_mapping[idx];
-        const newName = window.prompt(`修改正式名稱（原為「${oldRep.name}」）：`, oldRep.name);
-        if (!newName || newName.trim() === "" || newName === oldRep.name) return;
-        
-        const newAliasStr = window.prompt(`修改別名（原為「${(oldRep.aliases||[]).join(', ')}」）：`, (oldRep.aliases||[]).join(', '));
-        if (newAliasStr === null) return;
-        
-        const trimmedNewName = newName.trim();
-        const newAliases = newAliasStr.split(',').map(s => s.trim()).filter(Boolean);
 
-        showToast('正在更新設定與歷史資料...', 'info');
-        try {
-          currentSettings.sales_mapping[idx] = { name: trimmedNewName, aliases: newAliases };
-          await this.saveSettings();
+        const content = `
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-slate-700">正式名稱</label>
+              <input type="text" id="edit-rep-name" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand" value="${oldRep.name}">
+            </div>
+            <div class="flex flex-col gap-1.5">
+              <label class="text-sm font-medium text-slate-700">別名 (用逗號隔開)</label>
+              <input type="text" id="edit-rep-alias" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand" value="${(oldRep.aliases||[]).join(', ')}">
+            </div>
+          </div>
+          <div class="flex justify-end gap-3 mt-6">
+            <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">取消</button>
+            <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover shadow-md shadow-brand/20 active:scale-95 transition-all">儲存</button>
+          </div>
+        `;
 
-          const orders = await getCollection('work_orders');
-          let updateCount = 0;
-          for (const order of orders) {
-            let reps = order.salesReps || [];
-            let changed = false;
-            if (reps.includes(oldRep.name)) {
-              reps = reps.filter(r => r !== oldRep.name);
-              reps.push(trimmedNewName);
-              changed = true;
-            }
-            (oldRep.aliases || []).forEach(alias => {
-              if (reps.includes(alias)) {
-                reps = reps.filter(r => r !== alias);
-                reps.push(trimmedNewName);
+        const { close, element } = openModal({ title: '編輯銷售員', content });
+
+        element.querySelector('#modal-cancel-btn').addEventListener('click', close);
+
+        element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
+          const newName = element.querySelector('#edit-rep-name').value.trim();
+          const newAliasStr = element.querySelector('#edit-rep-alias').value.trim();
+
+          if (!newName) {
+            showToast('正式名稱不能為空', 'error');
+            return;
+          }
+
+          if (newName === oldRep.name && newAliasStr === (oldRep.aliases||[]).join(', ')) {
+            close();
+            return;
+          }
+
+          const confirmBtn = element.querySelector('#modal-confirm-btn');
+          confirmBtn.disabled = true;
+          confirmBtn.textContent = '更新中...';
+
+          showToast('正在更新設定與歷史資料...', 'info');
+          try {
+            const newAliases = newAliasStr.split(',').map(s => s.trim()).filter(Boolean);
+            currentSettings.sales_mapping[idx] = { name: newName, aliases: newAliases };
+            await this.saveSettings();
+
+            const orders = await getCollection('work_orders');
+            let updateCount = 0;
+            for (const order of orders) {
+              let reps = order.salesReps || [];
+              let changed = false;
+              if (reps.includes(oldRep.name)) {
+                reps = reps.filter(r => r !== oldRep.name);
+                reps.push(newName);
                 changed = true;
               }
-            });
-            if (changed) {
-              await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
-              updateCount++;
+              (oldRep.aliases || []).forEach(alias => {
+                if (reps.includes(alias)) {
+                  reps = reps.filter(r => r !== alias);
+                  reps.push(newName);
+                  changed = true;
+                }
+              });
+              if (changed) {
+                await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
+                updateCount++;
+              }
             }
+            showToast(`修改成功，同步更新了 ${updateCount} 筆工單`, 'success');
+            close();
+            this.renderTabs(); // 重新整理畫面
+          } catch (err) {
+            console.error(err);
+            showToast('修改失敗，請稍後再試', 'error');
+            confirmBtn.disabled = false;
+            confirmBtn.textContent = '儲存';
           }
-          showToast(`修改成功，同步更新了 ${updateCount} 筆工單`, 'success');
-        } catch (err) {
-          showToast('修改失敗，請稍後再試', 'error');
-        }
+        });
       });
     });
 
@@ -837,6 +874,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792916000
-W: UPGRADE-002
+V: 1792918000
+W: UPGRADE-003
 ═══ */
