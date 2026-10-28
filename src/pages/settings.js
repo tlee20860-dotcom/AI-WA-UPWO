@@ -10,7 +10,7 @@ import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users
 
 let unsubscribe = null;
 let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {} };
-let activeTab = 'statuses'; // 'statuses', 'mapping', 'schema', 'users', 'view_config', 'data', 'import'
+let activeTab = 'statuses';
 
 export default {
   async render() {
@@ -20,7 +20,6 @@ export default {
       return;
     }
 
-    // 1. 渲染頁面骨架
     renderPageLayout({
       title: '系統設定',
       subtitle: '管理工序狀態、銷售員對照表、系統欄位與帳號',
@@ -30,10 +29,7 @@ export default {
       listContainerId: 'settings-container'
     });
 
-    // 2. 優先渲染 UI 骨架
     this.renderTabs();
-
-    // 3. 初始化資料監聽
     this.initDataListener();
   },
 
@@ -49,7 +45,7 @@ export default {
           view_configs: data.view_configs || this.getDefaultViewConfigs()
         };
         
-        // 自動補齊核心欄位防呆
+        // 自動補齊核心欄位與視圖配置
         const requiredSysFields = [
           { key: 'id', label: '發票', type: 'string', isSystem: true },
           { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
@@ -66,7 +62,7 @@ export default {
           }
         });
 
-        // 確保視圖配置預設有這些欄位
+        // 確保每個頁面的視圖配置有基本欄位
         Object.keys(currentSettings.view_configs).forEach(page => {
           if (!currentSettings.view_configs[page].includes('status')) {
             currentSettings.view_configs[page].unshift('status');
@@ -77,6 +73,12 @@ export default {
             needSave = true;
           }
         });
+
+        // 檢查是否有 overview 配置，若無則補上
+        if (!currentSettings.view_configs['overview']) {
+          currentSettings.view_configs['overview'] = ['id', 'status', 'salesRep', 'dueDate'];
+          needSave = true;
+        }
 
       } else {
         currentSettings = {
@@ -118,7 +120,8 @@ export default {
       kanban: ['id', 'status', 'customerNameZh', 'salesRep', 'dueDate'],
       table: ['id', 'customCategory', 'status', 'uploadDate', 'dueDate', 'amount', 'customerNameZh', 'customerNameEn'],
       category: ['id', 'customCategory', 'status', 'dueDate'],
-      salesperson: ['id', 'customCategory', 'status', 'dueDate']
+      salesperson: ['id', 'customCategory', 'status', 'dueDate'],
+      overview: ['id', 'status', 'salesRep', 'dueDate']
     };
   },
 
@@ -129,7 +132,6 @@ export default {
     container.innerHTML = `
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden min-h-[500px] flex flex-col md:flex-row">
         
-        <!-- 左側設定選單 -->
         <div class="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 flex flex-col gap-1 flex-shrink-0 overflow-y-auto">
           <button class="tab-btn ${activeTab === 'statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="statuses">
             <i data-lucide="tag" class="w-4 h-4"></i> 狀態管理
@@ -160,10 +162,7 @@ export default {
           </button>
         </div>
 
-        <!-- 右側內容區 -->
-        <div class="flex-1 p-6 md:p-8" id="settings-content">
-          <!-- 由 renderContent 注入 -->
-        </div>
+        <div class="flex-1 p-6 md:p-8" id="settings-content"></div>
       </div>
     `;
 
@@ -198,11 +197,11 @@ export default {
     else if (activeTab === 'import') this.renderImport(content);
   },
 
-  // ═══════════ 視圖配置 ═══════════
   renderViewConfig(container) {
     const pages = [
       { key: 'kanban', label: '工單進度表', icon: 'layout-dashboard' },
       { key: 'table', label: '管理總表', icon: 'table' },
+      { key: 'overview', label: '總狀態視圖', icon: 'pie-chart' },
       { key: 'category', label: '類別視圖', icon: 'layers' },
       { key: 'salesperson', label: '銷售員視圖', icon: 'users' }
     ];
@@ -241,7 +240,7 @@ export default {
       </div>
     `;
 
-    createIcons({ icons: { LayoutDashboard, Table, Layers, Users }, attrs: { class: 'w-5 h-5' } });
+    createIcons({ icons: { LayoutDashboard, Table, Layers, Users, PieChart }, attrs: { class: 'w-5 h-5' } });
 
     document.querySelectorAll('.view-config-checkbox').forEach(checkbox => {
       checkbox.addEventListener('change', async (e) => {
@@ -267,7 +266,6 @@ export default {
     });
   },
 
-  // ═══════════ 狀態管理 ═══════════
   renderStatuses(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
@@ -404,7 +402,6 @@ export default {
     });
   },
 
-  // ═══════════ 對照表管理 ═══════════
   renderMapping(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
@@ -537,7 +534,6 @@ export default {
     });
   },
 
-  // ═══════════ 欄位管理 ═══════════
   renderSchema(container) {
     const sysFields = currentSettings.schema.filter(f => f.isSystem);
     const customFields = currentSettings.schema.filter(f => !f.isSystem);
@@ -628,7 +624,6 @@ export default {
         if (!confirmed) return;
         
         currentSettings.schema = currentSettings.schema.filter(f => f.key !== key);
-        // 同時從視圖配置中移除
         Object.keys(currentSettings.view_configs).forEach(page => {
           currentSettings.view_configs[page] = currentSettings.view_configs[page].filter(k => k !== key);
         });
@@ -639,7 +634,6 @@ export default {
     });
   },
 
-  // ═══════════ 帳號管理 ═══════════
   renderUsers(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
@@ -708,7 +702,6 @@ export default {
     });
   },
 
-  // ═══════════ 資料管理 ═══════════
   renderDataManagement(container) {
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
@@ -761,7 +754,6 @@ export default {
     });
   },
 
-  // ═══════════ 匯入 Excel ═══════════
   renderImport(container) {
     container.innerHTML = `
       <div class="flex flex-col items-center justify-center h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 p-8 text-center relative" id="drop-zone">
@@ -845,6 +837,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792914800
+V: 1792916000
 W: UPGRADE-002
 ═══ */
