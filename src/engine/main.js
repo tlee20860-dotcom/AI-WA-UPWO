@@ -4,7 +4,7 @@ import { updateDocument } from '../db/write.js';
 
 /**
  * 系統啟動入口
- * 負責等待 DOM 載入完成後，初始化路由與背景任務
+ * 負責等待 DOM 載入完成後，初始化路由、背景任務與 PWA
  */
 document.addEventListener('DOMContentLoaded', () => {
   const root = document.getElementById('app-root');
@@ -21,12 +21,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   try {
-    // 啟動路由系統
+    // 1. 啟動路由系統
     initRouter();
     console.log('[System] UPGRADE-WO 系統啟動成功。');
 
-    // 背景任務：自動修正歷史錯誤日期
+    // 2. 背景任務：自動修正歷史錯誤日期
     fixLegacyDatesInBackground();
+
+    // 3. 註冊 Service Worker (PWA)
+    registerServiceWorker();
     
   } catch (error) {
     console.error('[System Error] 系統啟動失敗:', error);
@@ -109,8 +112,25 @@ async function fixLegacyDatesInBackground() {
   }
 }
 
+/**
+ * 註冊 Service Worker 以啟用 PWA 功能
+ */
+function registerServiceWorker() {
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+          console.log('[PWA] ServiceWorker 註冊成功，範圍為:', registration.scope);
+        })
+        .catch((error) => {
+          console.warn('[PWA] ServiceWorker 註冊失敗:', error);
+        });
+    });
+  }
+}
+
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1792915800
+V: 1792916500
 W: UPGRADE-002
 ═══ */
