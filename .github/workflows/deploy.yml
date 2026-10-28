@@ -23,6 +23,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: 'npm'
 
       - name: Install Dependencies
         # 若專案無 package-lock.json，使用 npm install 避免報錯
@@ -40,6 +41,6 @@ jobs:
 
 # ═══ EOF ═══
 # F: AI-WA-UPWO/.github/workflows/deploy.yml
-# V: 1792913400
-# W: UPGRADE-002
+# V: 1792922000
+# W: UPGRADE-004
 # ═══
