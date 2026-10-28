@@ -1,5 +1,5 @@
 import { AppState } from '../config/state.js';
-import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, ArrowRightLeft, User, Calendar, ChevronDown, Inbox } from 'lucide';
+import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox } from 'lucide';
 
 /**
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
@@ -16,47 +16,6 @@ export function formatExcelDate(val) {
     if (!isNaN(date.getTime())) return date.toISOString().split('T')[0];
   }
   return String(val).trim();
-}
-
-/**
- * 彈出狀態選擇視窗
- */
-function showStatusModal(currentStatus, onSelect) {
-  const statuses = AppState.getStatuses() || [];
-  const otherStatuses = statuses.filter(s => s !== currentStatus);
-  
-  if (otherStatuses.length === 0) return;
-
-  const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 bg-black/40 z-[999] flex items-center justify-center p-4';
-  overlay.innerHTML = `
-    <div class="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-xl">
-      <div class="px-5 py-4 border-b border-slate-100 flex justify-between items-center">
-        <h3 class="font-bold text-slate-800">選擇目標狀態</h3>
-        <button class="text-slate-400 hover:text-slate-600 close-modal text-xl leading-none">&times;</button>
-      </div>
-      <div class="p-4 flex flex-col gap-2">
-        ${otherStatuses.map(s => `
-          <button class="w-full text-left px-4 py-3 rounded-xl border border-slate-200 hover:border-brand hover:text-brand font-medium transition-colors btn-select-status" data-status="${s}">
-            ${s}
-          </button>
-        `).join('')}
-      </div>
-    </div>
-  `;
-  
-  document.body.appendChild(overlay);
-  
-  const close = () => overlay.remove();
-  overlay.querySelector('.close-modal').onclick = close;
-  overlay.onclick = (e) => { if (e.target === overlay) close(); };
-  
-  overlay.querySelectorAll('.btn-select-status').forEach(btn => {
-    btn.onclick = () => {
-      close();
-      onSelect(btn.dataset.status);
-    };
-  });
 }
 
 // 全域狀態暫存，避免切換頁面時遺失
@@ -80,11 +39,18 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     return id && !id.includes('***') && !id.includes('訂單');
   });
 
-  // 2. 依配置提取顯示欄位
-  const displayFields = visibleFields.filter(f => f.isVisible);
+  // 2. 依配置提取顯示欄位 (若無配置，保底顯示 id 與 status)
+  let displayFields = visibleFields.filter(f => f.isVisible);
+  if (displayFields.length === 0) {
+    displayFields = [
+      { key: 'id', label: '發票', isVisible: true },
+      { key: 'status', label: '生產進度', isVisible: true }
+    ];
+  }
 
   // 3. 全域事件委派 (確保全站按鈕絕不失效)
   if (!window._orderViewListenerAdded) {
+    // 點擊事件
     document.addEventListener('click', (e) => {
       // 切換視圖
       const viewBtn = e.target.closest('[data-action="switch-view"]');
@@ -114,25 +80,14 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         return;
       }
       
-      // 動作按鈕 (流轉、刪除)
-      const actionBtn = e.target.closest('[data-action="flow"], [data-action="delete"]');
+      // 動作按鈕 (刪除)
+      const actionBtn = e.target.closest('[data-action="delete"]');
       if (actionBtn) {
-        const action = actionBtn.dataset.action;
-        const id = actionBtn.dataset.id;
-        if (action === 'flow') {
-          const order = cleanOrders.find(o => o.id === id);
-          if (order) {
-            showStatusModal(order.status, (newStatus) => {
-              if (onAction) onAction('flow', id, newStatus);
-            });
-          }
-        } else {
-          if (onAction) onAction(action, id);
-        }
+        if (onAction) onAction('delete', actionBtn.dataset.id);
       }
     });
 
-    // 篩選輸入
+    // 輸入事件 (篩選)
     document.addEventListener('input', (e) => {
       const input = e.target.closest('input[data-filter]');
       if (input) {
@@ -143,6 +98,17 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         }
       }
     });
+
+    // 改變事件 (狀態下拉選單)
+    document.addEventListener('change', (e) => {
+      const select = e.target.closest('select[data-action="change-status"]');
+      if (select) {
+        const id = select.dataset.id;
+        const newStatus = select.value;
+        if (onAction) onAction('status_change', id, newStatus);
+      }
+    });
+
     window._orderViewListenerAdded = true;
   }
 
@@ -158,6 +124,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     const v = state.filters[k].toLowerCase();
     if (v) cleanOrders = cleanOrders.filter(o => String(getOrderValue(o, k)).toLowerCase().includes(v));
   });
+
+  const statuses = AppState.getStatuses() || [];
 
   // 5. 生成 HTML
   const viewToggleHtml = `
@@ -186,11 +154,20 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         <div class="glass-card p-4 flex flex-col gap-2">
           ${displayFields.map(f => {
             const val = getOrderValue(order, f.key);
+            if (f.key === 'status') {
+              return `
+                <div class="text-sm flex flex-col gap-1">
+                  <span class="text-slate-400">${f.label}:</span>
+                  <select data-action="change-status" data-id="${order.id}" class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
+                    ${statuses.map(s => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
+                  </select>
+                </div>
+              `;
+            }
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
           }).join('')}
           ${isAdmin ? `
-            <div class="mt-auto pt-2 border-t border-slate-100 flex gap-2 justify-end">
-              <button data-action="flow" data-id="${order.id}" class="text-xs text-brand hover:bg-brand/10 px-2 py-1 rounded">流轉</button>
+            <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
               <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
             </div>
           ` : ''}
@@ -204,24 +181,34 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
           <thead class="sticky top-0 bg-slate-50 z-10 shadow-sm">
             <tr class="border-b border-slate-200/60 text-sm font-semibold text-slate-600">
               ${displayFields.map(f => `
-                <th class="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors" data-sort="${f.key}" data-page-key="${pageKey}">
+                <th class="px-4 py-3 cursor-pointer hover:bg-slate-100 transition-colors whitespace-nowrap min-w-[120px]" data-sort="${f.key}" data-page-key="${pageKey}">
                   <div class="flex items-center gap-1">${f.label} <i data-lucide="${state.sortKey === f.key ? (state.sortOrder === 'asc' ? 'arrow-up' : 'arrow-down') : 'arrow-up-down'}" class="w-3 h-3 ${state.sortKey === f.key ? 'text-brand' : 'text-slate-300'}"></i></div>
                 </th>
               `).join('')}
-              ${isAdmin ? `<th class="px-4 py-3 text-center">操作</th>` : ''}
+              ${isAdmin ? `<th class="px-4 py-3 text-center whitespace-nowrap min-w-[100px]">操作</th>` : ''}
             </tr>
             <tr class="bg-white border-b border-slate-100">
-              ${displayFields.map(f => `<th class="px-2 py-2"><input type="text" data-filter="${f.key}" data-page-key="${pageKey}" value="${state.filters[f.key] || ''}" class="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none"></th>`).join('')}
-              ${isAdmin ? `<th></th>` : ''}
+              ${displayFields.map(f => `<th class="px-2 py-2 min-w-[120px]"><input type="text" data-filter="${f.key}" data-page-key="${pageKey}" value="${state.filters[f.key] || ''}" class="w-full px-2 py-1 text-xs border border-slate-200 rounded focus:outline-none"></th>`).join('')}
+              ${isAdmin ? `<th class="min-w-[100px]"></th>` : ''}
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
             ${cleanOrders.map(order => `
               <tr class="hover:bg-slate-50/50 transition-colors">
-                ${displayFields.map(f => `<td class="px-4 py-3 whitespace-nowrap">${getOrderValue(order, f.key) || '-'}</td>`).join('')}
+                ${displayFields.map(f => {
+                  if (f.key === 'status') {
+                    return `
+                      <td class="px-4 py-3 whitespace-nowrap">
+                        <select data-action="change-status" data-id="${order.id}" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
+                          ${statuses.map(s => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
+                        </select>
+                      </td>
+                    `;
+                  }
+                  return `<td class="px-4 py-3 whitespace-nowrap">${getOrderValue(order, f.key) || '-'}</td>`;
+                }).join('')}
                 ${isAdmin ? `
                   <td class="px-4 py-3 text-center whitespace-nowrap">
-                    <button data-action="flow" data-id="${order.id}" class="text-xs text-brand hover:bg-brand/10 px-2 py-1 rounded mr-1">流轉</button>
                     <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
                   </td>
                 ` : ''}
@@ -245,7 +232,7 @@ function getOrderValue(order, key) {
     return formatExcelDate(order[key]);
   }
   if (key === 'status') {
-    return `<span class="px-2 py-1 bg-brand/10 text-brand rounded-md text-xs font-semibold">${order.status || '未知'}</span>`;
+    return order.status || '未知'; // 這裡只回傳文字供排序或篩選用
   }
   if (order.data && order.data[key] !== undefined) {
     return order.data[key];
@@ -255,6 +242,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792914500
+V: 1792916100
 W: UPGRADE-002
 ═══ */
