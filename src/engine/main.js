@@ -1,5 +1,5 @@
 import { initRouter } from './router.js';
-import { getCollection, getDocument } from '../db/read.js';
+import { getCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
 
 /**
@@ -52,11 +52,9 @@ function formatDate(val) {
   const num = Number(val);
   if (!isNaN(num) && num > 20000 && num < 80000) {
     const date = new Date((num - 25569) * 86400 * 1000);
-    if (!date.getTime || isNaN(date.getTime())) {
-      const d = new Date((num - 25569) * 86400 * 1000);
-      return d.toISOString().split('T')[0];
+    if (!isNaN(date.getTime())) {
+      return date.toISOString().split('T')[0];
     }
-    return date.toISOString().split('T')[0];
   }
   return String(val).trim();
 }
@@ -66,11 +64,9 @@ function formatDate(val) {
  */
 async function fixLegacyDatesInBackground() {
   try {
-    // 檢查是否有管理員權限或已登入，避免未登入時報錯
     const userStr = sessionStorage.getItem('upgrade_user');
-    if (!userStr) return;
+    if (!userStr) return; // 未登入不執行
     
-    // 為了避免每次重整都掃描，可以存個標記在 localStorage，但這裡為了確保資料正確，每次啟動掃描
     const orders = await getCollection('work_orders');
     let fixCount = 0;
 
@@ -79,7 +75,7 @@ async function fixLegacyDatesInBackground() {
       const updates = {};
 
       // 檢查 uploadDate
-      if (order.uploadDate && typeof order.uploadDate === 'number' || (typeof order.uploadDate === 'string' && !order.uploadDate.includes('-'))) {
+      if (order.uploadDate && (typeof order.uploadDate === 'number' || (typeof order.uploadDate === 'string' && !order.uploadDate.includes('-')))) {
         const formatted = formatDate(order.uploadDate);
         if (formatted !== order.uploadDate && formatted !== '') {
           updates.uploadDate = formatted;
@@ -104,18 +100,17 @@ async function fixLegacyDatesInBackground() {
 
     if (fixCount > 0) {
       console.log(`[System] 背景自動修正了 ${fixCount} 筆工單的日期格式。`);
-      // 可選：觸發一個自訂事件讓當前頁面重新渲染
+      // 觸發事件讓當前頁面重新渲染
       window.dispatchEvent(new Event('data:dates-fixed'));
     }
 
   } catch (error) {
-    // 在背景靜默處理，避免干擾使用者
     console.warn('[System Background Task] 自動修正日期時發生錯誤:', error);
   }
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1792912800
+V: 1792915800
 W: UPGRADE-002
 ═══ */
