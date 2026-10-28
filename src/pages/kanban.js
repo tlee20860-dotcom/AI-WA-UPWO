@@ -57,7 +57,6 @@ export default {
       this.updateUI();
     });
 
-    // 監聽全域刷新 (由 order-view 觸發)
     window.addEventListener('refresh-kanban', this.updateUI.bind(this));
     createIcons({ icons: { Upload }, attrs: { class: 'w-4 h-4' } });
 
@@ -110,9 +109,9 @@ export default {
             await deleteDocument('work_orders', id);
             showToast('已刪除', 'success');
           }
-        } else if (action === 'flow') {
+        } else if (action === 'status_change') {
           if (newStatus) {
-            await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: new Date().toISOString() });
+            await updateDocument('work_orders', id, { status: newStatus, statusUpdateDate: new Date().toISOString() });
             showToast('已更新生產進度', 'success');
           }
         }
@@ -143,6 +142,7 @@ export default {
 
         for (const order of parsed) {
           if (await getDocument('work_orders', order.id)) {
+            // 若存在，僅更新 Excel 相關欄位，保留狀態
             await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
             updated++;
           } else {
@@ -167,6 +167,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792914700
+V: 1792915000
 W: UPGRADE-002
 ═══ */
