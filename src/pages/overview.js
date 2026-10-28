@@ -1,18 +1,30 @@
 import { AppState } from '../config/state.js';
-import { listenCollection } from '../db/read.js';
+import { listenCollection, getDocument } from '../db/read.js';
+import { updateDocument, deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
-import { groupByStatus, generatePivotTable } from '../domain/stats.js';
+import { showToast } from '../ui/toast.js';
+import { openConfirm } from '../ui/modal.js';
+import { renderOrderView } from '../ui/order-view.js';
+import { groupByStatus, calculateStats, generatePivotTable } from '../domain/stats.js';
 import { createIcons, Inbox, PieChart, LayoutDashboard } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
+let schema = [];
+let viewConfig = {};
 
 export default {
   async render() {
-    const user = AppState.getUser();
-    if (!user) return;
+    if (!AppState.getUser()) return;
 
-    // 1. 渲染頁面骨架
+    try {
+      const settingsDoc = await getDocument('settings', 'main');
+      if (settingsDoc) {
+        schema = settingsDoc.schema || [];
+        viewConfig = settingsDoc.view_configs || {};
+      }
+    } catch (err) {}
+
     renderPageLayout({
       title: '總狀態視圖',
       subtitle: '全廠工單狀態分佈與銷售員樞紐分析',
@@ -22,24 +34,30 @@ export default {
       listContainerId: 'overview-container'
     });
 
-    // 2. 初始化資料監聽
+    window.addEventListener('refresh-overview', this.updateUI.bind(this));
+
     this.initDataListener();
   },
 
   initDataListener() {
+    if (unsubscribe) unsubscribe();
     unsubscribe = listenCollection('work_orders', (orders) => {
       currentOrders = orders;
-      this.renderOverview(orders);
+      this.updateUI();
     });
   },
 
-  renderOverview(orders) {
+  updateUI() {
     const container = document.getElementById('overview-container');
     if (!container) return;
 
-    const statuses = AppState.getStatuses() || ['排產中', '印刷', '裁切', '品檢', '出貨'];
+    // 過濾垃圾資料
+    const cleanOrders = currentOrders.filter(o => {
+      const id = String(o.id || '');
+      return id && !id.includes('***') && !id.includes('訂單');
+    });
 
-    if (orders.length === 0) {
+    if (cleanOrders.length === 0) {
       container.innerHTML = `
         <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft">
           <i data-lucide="inbox" class="w-12 h-12 opacity-30"></i>
@@ -50,18 +68,16 @@ export default {
       return;
     }
 
-    // 取得所有出現過的銷售員（作為樞紐表的欄）
+    const statuses = AppState.getStatuses() || [];
+
+    // 1. 上半部：狀態 / 銷售員 樞紐分析
     const allRepsSet = new Set();
-    orders.forEach(o => {
-      (o.salesReps || ['未知銷售員']).forEach(r => allRepsSet.add(r));
+    cleanOrders.forEach(o => {
+      (o.salesReps || ['未填寫']).forEach(r => allRepsSet.add(r));
     });
     const allReps = Array.from(allRepsSet).sort();
+    const pivotData = generatePivotTable(cleanOrders, statuses, allReps);
 
-    // 生成樞紐表數據
-    const pivotData = generatePivotTable(orders, statuses, allReps);
-    const grouped = groupByStatus(orders, statuses);
-
-    // 上半部：樞紐交叉表
     let pivotHtml = `
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden mb-6">
         <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
@@ -102,60 +118,50 @@ export default {
       </div>
     `;
 
-    // 下半部：各狀態工單看板 (簡化版)
-    let boardHtml = `
-      <div class="flex items-center gap-2 mb-4">
+    // 2. 下半部：工單動態列表 (使用 order-view)
+    let listHtml = `
+      <div class="flex items-center gap-2 mb-4 mt-8">
         <i data-lucide="layout-dashboard" class="w-5 h-5 text-brand"></i>
-        <h2 class="font-bold text-slate-800">各狀態工單看板</h2>
+        <h2 class="font-bold text-slate-800">工單狀態列表</h2>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 pb-6">
-        ${statuses.map(status => {
-          const statusOrders = grouped[status] || [];
-          if (statusOrders.length === 0) return ''; // 若該狀態無工單則不顯示區塊
-
-          return `
-            <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden flex flex-col h-[300px]">
-              <div class="px-5 py-3 border-b border-slate-100 bg-slate-50/50 flex justify-between items-center">
-                <h3 class="font-bold text-slate-700 flex items-center gap-2">
-                  <span class="w-2 h-2 rounded-full bg-brand"></span> ${status}
-                </h3>
-                <span class="text-xs font-medium bg-slate-200 text-slate-600 px-2 py-0.5 rounded-full">${statusOrders.length}</span>
-              </div>
-              <div class="p-3 flex flex-col gap-2 flex-1 overflow-y-auto kanban-scroll inset-panel m-3">
-                ${statusOrders.map(order => `
-                  <div class="bg-white p-3 rounded-xl border border-slate-100 shadow-sm hover:shadow-md transition-shadow cursor-default flex justify-between items-center">
-                    <div class="flex flex-col">
-                      <span class="font-bold text-slate-800 text-sm">${order.id}</span>
-                      <span class="text-xs text-slate-500 mt-1">${(order.salesReps || []).join(', ')}</span>
-                    </div>
-                    ${order.dueDate ? `<span class="text-[10px] font-medium bg-amber-50 text-amber-600 px-2 py-1 rounded-md">${order.dueDate}</span>` : ''}
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
-        }).join('')}
-      </div>
+      <div id="overview-list-container"></div>
     `;
 
-    container.innerHTML = pivotHtml + boardHtml;
-    createIcons({
-      icons: { PieChart, LayoutDashboard },
-      attrs: { class: 'w-5 h-5' }
+    container.innerHTML = pivotHtml + listHtml;
+
+    createIcons({ icons: { PieChart, LayoutDashboard }, attrs: { class: 'w-5 h-5' } });
+
+    // 渲染下半部的工單列表
+    renderOrderView({
+      containerId: 'overview-list-container',
+      orders: cleanOrders,
+      visibleFields: schema.filter(f => (viewConfig['overview'] || ['id', 'status', 'salesReps', 'dueDate']).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      isAdmin: AppState.getUser()?.role === 'admin',
+      pageKey: 'overview',
+      onAction: async (action, id, newStatus) => {
+        if (action === 'delete') {
+          if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
+            await deleteDocument('work_orders', id);
+            showToast('已刪除', 'success');
+          }
+        } else if (action === 'status_change') {
+          if (newStatus) {
+            await updateDocument('work_orders', id, { status: newStatus, statusUpdateDate: new Date().toISOString() });
+            showToast('已更新生產進度', 'success');
+          }
+        }
+      }
     });
   },
 
   destroy() {
-    if (unsubscribe) {
-      unsubscribe();
-      unsubscribe = null;
-    }
-    currentOrders = [];
+    if (unsubscribe) unsubscribe();
+    window.removeEventListener('refresh-overview', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/overview.js
-V: 1792909600
+V: 1792915900
 W: UPGRADE-002
 ═══ */
