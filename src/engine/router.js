@@ -10,6 +10,7 @@ import OverviewPage from '../pages/overview.js';
 import SalespersonPage from '../pages/salesperson.js';
 import SettingsPage from '../pages/settings.js';
 import CategoryPage from '../pages/category.js';
+import AdminDataPage from '../pages/admin-data.js';
 
 const routes = {
   login: LoginPage,
@@ -18,7 +19,8 @@ const routes = {
   overview: OverviewPage,
   salesperson: SalespersonPage,
   settings: SettingsPage,
-  category: CategoryPage
+  category: CategoryPage,
+  'admin-data': AdminDataPage
 };
 
 let currentPageInstance = null;
@@ -45,9 +47,9 @@ function handleRoute() {
     }
   }
 
-  // 2. 權限守衛 (Settings 僅限 admin)
-  if (hash === 'settings' && user && user.role !== 'admin') {
-    showToast('您沒有權限訪問系統設定', 'error');
+  // 2. 權限守衛 (Settings 與 Admin-Data 僅限 admin)
+  if ((hash === 'settings' || hash === 'admin-data') && user && user.role !== 'admin') {
+    showToast('您沒有權限訪問此頁面', 'error');
     window.location.hash = '#kanban';
     return;
   }
@@ -121,6 +123,6 @@ export function initRouter() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792912200
-W: UPGRADE-002
+V: 1792917800
+W: UPGRADE-003
 ═══ */
