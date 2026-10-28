@@ -8,21 +8,15 @@
   "theme_color": "#6366F1",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icons/icon-512.png",
-      "sizes": "512x512",
+      "src": "/icons/icon.png",
+      "sizes": "1024x1024",
       "type": "image/png",
       "purpose": "any maskable"
     }
   ],
   "_EOF": {
     "F": "AI-WA-UPWO/public/manifest.json",
-    "V": "1792916200",
-    "W": "UPGRADE-002"
+    "V": "1792923000",
+    "W": "UPGRADE-004"
   }
 }
