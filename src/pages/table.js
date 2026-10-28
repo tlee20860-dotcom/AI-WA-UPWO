@@ -81,10 +81,16 @@ export default {
       filtered = filtered.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === currentCategory);
     }
 
+    // 依使用者設定的順序對齊欄位
+    const visibleFields = (viewConfig['table'] || []).map(key => {
+      const field = schema.find(f => f.key === key);
+      return field ? Object.assign({}, field, { isVisible: true }) : null;
+    }).filter(Boolean);
+
     renderOrderView({
       containerId: 'table-container',
       orders: filtered,
-      visibleFields: schema.filter(f => (viewConfig['table'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'table',
       onAction: async (action, id, newStatus) => {
@@ -124,6 +130,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792915100
-W: UPGRADE-002
+V: 1792920200
+W: UPGRADE-004
 ═══ */
