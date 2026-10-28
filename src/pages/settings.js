@@ -39,6 +39,7 @@ export default {
 
   initDataListener() {
     unsubscribe = listenDocument('settings', 'main', async (data) => {
+      let needSave = false;
       if (data) {
         currentSettings = {
           statuses: data.statuses || ['排產中'],
@@ -47,6 +48,36 @@ export default {
           schema: data.schema || this.getDefaultSchema(),
           view_configs: data.view_configs || this.getDefaultViewConfigs()
         };
+        
+        // 自動補齊核心欄位防呆
+        const requiredSysFields = [
+          { key: 'id', label: '發票', type: 'string', isSystem: true },
+          { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
+          { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
+          { key: 'status', label: '生產進度', type: 'string', isSystem: true },
+          { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true },
+          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true }
+        ];
+
+        requiredSysFields.forEach(req => {
+          if (!currentSettings.schema.some(f => f.key === req.key)) {
+            currentSettings.schema.unshift(req);
+            needSave = true;
+          }
+        });
+
+        // 確保視圖配置預設有這些欄位
+        Object.keys(currentSettings.view_configs).forEach(page => {
+          if (!currentSettings.view_configs[page].includes('status')) {
+            currentSettings.view_configs[page].unshift('status');
+            needSave = true;
+          }
+          if (!currentSettings.view_configs[page].includes('dueDate') && page !== 'kanban') {
+            currentSettings.view_configs[page].push('dueDate');
+            needSave = true;
+          }
+        });
+
       } else {
         currentSettings = {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
@@ -55,9 +86,13 @@ export default {
           schema: this.getDefaultSchema(),
           view_configs: this.getDefaultViewConfigs()
         };
-        await setDocument('settings', 'main', currentSettings);
+        needSave = true;
       }
       
+      if (needSave) {
+        await setDocument('settings', 'main', currentSettings);
+      }
+
       AppState.setStatuses(currentSettings.statuses);
       this.renderTabs();
     });
@@ -68,6 +103,9 @@ export default {
       { key: 'id', label: '發票', type: 'string', isSystem: true },
       { key: 'uploadDate', label: '日期', type: 'date', isSystem: true },
       { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true },
+      { key: 'status', label: '生產進度', type: 'string', isSystem: true },
+      { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true },
+      { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true },
       { key: 'amount', label: '金額', type: 'number', isSystem: false },
       { key: 'customCategory', label: '類別', type: 'string', isSystem: false },
       { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false },
@@ -160,10 +198,10 @@ export default {
     else if (activeTab === 'import') this.renderImport(content);
   },
 
-  // ═══════════ 視圖配置（全新功能） ═══════════
+  // ═══════════ 視圖配置 ═══════════
   renderViewConfig(container) {
     const pages = [
-      { key: 'kanban', label: '流水線進度控制台', icon: 'layout-dashboard' },
+      { key: 'kanban', label: '工單進度表', icon: 'layout-dashboard' },
       { key: 'table', label: '管理總表', icon: 'table' },
       { key: 'category', label: '類別視圖', icon: 'layers' },
       { key: 'salesperson', label: '銷售員視圖', icon: 'users' }
@@ -807,6 +845,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792913900
+V: 1792914800
 W: UPGRADE-002
 ═══ */
