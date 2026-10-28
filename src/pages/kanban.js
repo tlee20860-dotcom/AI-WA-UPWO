@@ -41,7 +41,7 @@ export default {
         </div>
       `,
       controls: `
-        <div id="status-tabs" class="flex items-center gap-2 overflow-x-auto pb-2 mb-2 kanban-scroll"></div>
+        <div id="status-tabs" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 mb-4"></div>
         <div class="flex items-center gap-2 mb-4">
           <span class="text-sm font-medium text-slate-600">類別：</span>
           <select id="filter-category" class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none shadow-sm min-w-[120px]"></select>
@@ -76,8 +76,9 @@ export default {
     const tabsContainer = document.getElementById('status-tabs');
     if (tabsContainer) {
       tabsContainer.innerHTML = statuses.map(s => `
-        <button class="whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium border ${s === currentStatus ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-status="${s}">
-          ${s} <span class="ml-1 text-xs px-1.5 py-0.5 rounded-md ${s === currentStatus ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => o.status === s).length}</span>
+        <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${s === currentStatus ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-status="${s}">
+          <span class="truncate pr-2">${s}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${s === currentStatus ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => o.status === s).length}</span>
         </button>
       `).join('');
 
@@ -97,10 +98,16 @@ export default {
       filtered = filtered.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === currentCategory);
     }
 
+    // 依使用者設定的順序對齊欄位
+    const visibleFields = (viewConfig['kanban'] || []).map(key => {
+      const field = schema.find(f => f.key === key);
+      return field ? { ...field, isVisible: true } : null;
+    }).filter(Boolean);
+
     renderOrderView({
       containerId: 'kanban-container',
       orders: filtered,
-      visibleFields: schema.filter(f => (viewConfig['kanban'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'kanban',
       onAction: async (action, id, newStatus) => {
@@ -167,6 +174,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792915000
-W: UPGRADE-002
+V: 1792919800
+W: UPGRADE-004
 ═══ */
