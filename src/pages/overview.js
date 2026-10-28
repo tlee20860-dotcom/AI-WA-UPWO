@@ -131,11 +131,17 @@ export default {
 
     createIcons({ icons: { PieChart, LayoutDashboard }, attrs: { class: 'w-5 h-5' } });
 
+    // 依使用者設定的順序對齊欄位
+    const visibleFields = (viewConfig['overview'] || ['id', 'status', 'salesReps', 'dueDate']).map(key => {
+      const field = schema.find(f => f.key === key);
+      return field ? Object.assign({}, field, { isVisible: true }) : null;
+    }).filter(Boolean);
+
     // 渲染下半部的工單列表
     renderOrderView({
       containerId: 'overview-list-container',
       orders: cleanOrders,
-      visibleFields: schema.filter(f => (viewConfig['overview'] || ['id', 'status', 'salesReps', 'dueDate']).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'overview',
       onAction: async (action, id, newStatus) => {
@@ -162,6 +168,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/overview.js
-V: 1792915900
-W: UPGRADE-002
+V: 1792920300
+W: UPGRADE-004
 ═══ */
