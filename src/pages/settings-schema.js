@@ -19,20 +19,31 @@ export function renderSchema(container, currentSettings, saveSettings) {
       </div>
     </div>
 
-    <div class="flex gap-2 mb-6">
+    <div class="flex flex-col sm:flex-row gap-2 mb-6">
       <input type="text" id="new-field-label" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新增欄位名稱 (例如：利潤)">
-      <button id="btn-add-field" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
+      <select id="new-field-type" class="w-full sm:w-32 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
+        <option value="string">文字</option>
+        <option value="number">數字</option>
+        <option value="date">日期</option>
+      </select>
+      <button id="btn-add-field" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
         <i data-lucide="plus" class="w-4 h-4"></i> 新增
       </button>
     </div>
 
-    <div class="mb-4 text-sm font-semibold text-slate-600">系統核心欄位（不可刪除）</div>
+    <div class="mb-4 text-sm font-semibold text-slate-600">系統核心欄位</div>
     <div class="flex flex-col gap-2 mb-8">
       ${sysFields.map(f => `
         <div class="flex items-center gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
           <div class="w-1/3 font-bold text-slate-700">${f.label}</div>
           <div class="w-1/3 text-slate-400 font-mono text-xs">${f.key}</div>
-          <div class="w-1/3 text-right text-slate-400 text-xs">系統保護</div>
+          <div class="w-1/3 flex justify-end items-center gap-4">
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+              <input type="checkbox" class="edit-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-key="${f.key}" ${f.isEditable ? 'checked' : ''}>
+              允許行內編輯
+            </label>
+            <span class="text-xs text-slate-400">系統保護</span>
+          </div>
         </div>
       `).join('')}
     </div>
@@ -42,9 +53,18 @@ export function renderSchema(container, currentSettings, saveSettings) {
       ${customFields.length === 0 ? '<div class="text-slate-400 text-sm py-2">目前尚無自訂欄位</div>' : ''}
       ${customFields.map((f, index) => `
         <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-          <div class="w-1/3 font-bold text-slate-800">${f.label}</div>
-          <div class="w-1/3 text-slate-500 font-mono text-xs">${f.key}</div>
-          <div class="w-1/3 flex justify-end gap-2">
+          <div class="w-1/3 font-bold text-slate-800 flex items-center gap-2">
+            ${f.label}
+            <span class="text-[10px] font-normal px-1.5 py-0.5 bg-slate-100 text-slate-500 rounded">${f.type === 'date' ? '日期' : f.type === 'number' ? '數字' : '文字'}</span>
+          </div>
+          <div class="w-1/3 flex items-center gap-4">
+            <span class="text-slate-500 font-mono text-xs">${f.key}</span>
+          </div>
+          <div class="w-1/3 flex justify-end items-center gap-3">
+            <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600 mr-2">
+              <input type="checkbox" class="edit-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-key="${f.key}" ${f.isEditable ? 'checked' : ''}>
+              允許編輯
+            </label>
             <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-field" data-key="${f.key}" data-label="${f.label}">
               <i data-lucide="edit-2" class="w-4 h-4"></i>
             </button>
@@ -61,13 +81,31 @@ export function renderSchema(container, currentSettings, saveSettings) {
 
   document.getElementById('btn-add-field')?.addEventListener('click', async () => {
     const input = document.getElementById('new-field-label');
+    const typeSelect = document.getElementById('new-field-type');
     const val = input.value.trim();
+    const type = typeSelect.value;
+    
     if (!val) return;
     
     const key = 'field_' + Date.now().toString(36);
-    currentSettings.schema.push({ key, label: val, type: 'string', isSystem: false });
+    currentSettings.schema.push({ key, label: val, type: type, isSystem: false, isEditable: true });
     await saveSettings();
     showToast('新增成功，可至視圖配置勾選顯示', 'success');
+  });
+
+  // 行內編輯勾選
+  document.querySelectorAll('.edit-checkbox').forEach(checkbox => {
+    checkbox.addEventListener('change', async (e) => {
+      const key = e.target.dataset.key;
+      const isChecked = e.target.checked;
+      
+      const idx = currentSettings.schema.findIndex(f => f.key === key);
+      if (idx !== -1) {
+        currentSettings.schema[idx].isEditable = isChecked;
+        await saveSettings();
+        showToast(isChecked ? '已開啟行內編輯' : '已關閉行內編輯', 'success');
+      }
+    });
   });
 
   document.querySelectorAll('.btn-edit-field').forEach(btn => {
@@ -241,6 +279,6 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-schema.js
-V: 1792919700
+V: 1792921400
 W: UPGRADE-004
 ═══ */
