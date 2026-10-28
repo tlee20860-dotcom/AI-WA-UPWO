@@ -30,7 +30,7 @@ export default {
       subtitle: '依發票前兩碼檢視工單狀態',
       headerActions: '',
       controls: `
-        <div id="category-tabs" class="flex items-center gap-2 overflow-x-auto pb-2 mb-2 kanban-scroll"></div>
+        <div id="category-tabs" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 mb-4"></div>
       `,
       listContainerId: 'category-container'
     });
@@ -62,8 +62,9 @@ export default {
     const tabsContainer = document.getElementById('category-tabs');
     if (tabsContainer) {
       tabsContainer.innerHTML = cats.map(c => `
-        <button class="whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium border ${c === currentCategory ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-cat="${c}">
-          ${c} <span class="ml-1 text-xs px-1.5 py-0.5 rounded-md ${c === currentCategory ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === c).length}</span>
+        <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${c === currentCategory ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-cat="${c}">
+          <span class="truncate pr-2">${c}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${c === currentCategory ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === c).length}</span>
         </button>
       `).join('');
 
@@ -76,10 +77,16 @@ export default {
 
     const filtered = currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === currentCategory);
 
+    // 依使用者設定的順序對齊欄位
+    const visibleFields = (viewConfig['category'] || []).map(key => {
+      const field = schema.find(f => f.key === key);
+      return field ? { ...field, isVisible: true } : null;
+    }).filter(Boolean);
+
     renderOrderView({
       containerId: 'category-container',
       orders: filtered,
-      visibleFields: schema.filter(f => (viewConfig['category'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'category',
       onAction: async (action, id, newStatus) => {
@@ -106,6 +113,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/category.js
-V: 1792915200
-W: UPGRADE-002
+V: 1792919900
+W: UPGRADE-004
 ═══ */
