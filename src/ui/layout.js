@@ -139,7 +139,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
  */
 function renderNavItems(role, onNavigate, closeDrawer) {
   const routes = [
-    { id: 'kanban', label: '流水線', icon: 'layout-dashboard', roles: ['admin', 'user'] },
+    { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'user'] },
     { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'user'] },
     { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'user'] },
     { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'user'] },
@@ -289,6 +289,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792912100
+V: 1792914600
 W: UPGRADE-002
 ═══ */
