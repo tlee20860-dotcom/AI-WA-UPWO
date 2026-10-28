@@ -44,7 +44,6 @@ export default {
     if (unsubscribe) unsubscribe();
     unsubscribe = listenCollection('work_orders', (orders) => {
       currentOrders = orders;
-      // 如果第一次載入，自動選中第一個類別
       if (!currentCategory) {
         const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
         if (cats.length > 0) currentCategory = cats[0];
@@ -56,7 +55,6 @@ export default {
   updateUI() {
     const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
     
-    // 若當前選中的類別不存在了，重置為第一個
     if (cats.length > 0 && !cats.includes(currentCategory)) {
       currentCategory = cats[0];
     }
@@ -84,17 +82,16 @@ export default {
       visibleFields: schema.filter(f => (viewConfig['category'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'category',
-      onAction: async (action, id) => {
+      onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
             await deleteDocument('work_orders', id);
             showToast('已刪除', 'success');
           }
-        } else if (action === 'flow') {
-          const newStatus = window.prompt('輸入目標狀態：');
+        } else if (action === 'status_change') {
           if (newStatus) {
-            await updateDocument('work_orders', id, { status: newStatus.trim(), statusUpdateDate: new Date().toISOString() });
-            showToast('已流轉', 'success');
+            await updateDocument('work_orders', id, { status: newStatus, statusUpdateDate: new Date().toISOString() });
+            showToast('已更新生產進度', 'success');
           }
         }
       }
@@ -109,6 +106,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/category.js
-V: 1792914200
+V: 1792915200
 W: UPGRADE-002
 ═══ */
