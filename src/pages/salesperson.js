@@ -30,7 +30,7 @@ export default {
       subtitle: '依銷售員檢視名下工單與狀態分佈',
       headerActions: '',
       controls: `
-        <div id="rep-tabs" class="flex items-center gap-2 overflow-x-auto pb-2 mb-2 kanban-scroll"></div>
+        <div id="rep-tabs" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 mb-4"></div>
       `,
       listContainerId: 'salesperson-container'
     });
@@ -65,8 +65,9 @@ export default {
     const tabsContainer = document.getElementById('rep-tabs');
     if (tabsContainer) {
       tabsContainer.innerHTML = reps.map(r => `
-        <button class="whitespace-nowrap px-4 py-2 rounded-xl text-sm font-medium border ${r === currentRep ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-rep="${r}">
-          ${r} <span class="ml-1 text-xs px-1.5 py-0.5 rounded-md ${r === currentRep ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(r)).length}</span>
+        <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${r === currentRep ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-rep="${r}">
+          <span class="truncate pr-2">${r}</span>
+          <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${r === currentRep ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(r)).length}</span>
         </button>
       `).join('');
 
@@ -79,10 +80,16 @@ export default {
 
     const filtered = currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(currentRep));
 
+    // 依使用者設定的順序對齊欄位
+    const visibleFields = (viewConfig['salesperson'] || []).map(key => {
+      const field = schema.find(f => f.key === key);
+      return field ? { ...field, isVisible: true } : null;
+    }).filter(Boolean);
+
     renderOrderView({
       containerId: 'salesperson-container',
       orders: filtered,
-      visibleFields: schema.filter(f => (viewConfig['salesperson'] || []).includes(f.key)).map(f => ({ ...f, isVisible: true })),
+      visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'salesperson',
       onAction: async (action, id, newStatus) => {
@@ -109,6 +116,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792915300
-W: UPGRADE-002
+V: 1792920000
+W: UPGRADE-004
 ═══ */
