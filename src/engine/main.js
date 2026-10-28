@@ -1,6 +1,7 @@
 import { initRouter } from './router.js';
 import { getCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
+import '../ui/order-view-editor.js';
 
 /**
  * 系統啟動入口
@@ -131,6 +132,6 @@ function registerServiceWorker() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1792916500
-W: UPGRADE-002
+V: 1792921300
+W: UPGRADE-004
 ═══ */
