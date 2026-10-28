@@ -1,4 +1,4 @@
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList } from 'lucide';
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database } from 'lucide';
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
@@ -100,7 +100,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
 
   // 渲染圖示
   createIcons({
-    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings },
+    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database },
     attrs: { class: 'w-5 h-5' }
   });
 
@@ -144,7 +144,8 @@ function renderNavItems(role, onNavigate, closeDrawer) {
     { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'user'] },
     { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'user'] },
     { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'user'] },
-    { id: 'settings', label: '系統設定', icon: 'settings', roles: ['admin'] }
+    { id: 'settings', label: '系統設定', icon: 'settings', roles: ['admin'] },
+    { id: 'admin-data', label: '資料總管', icon: 'database', roles: ['admin'] }
   ];
 
   const sidebarNav = document.getElementById('sidebar-nav');
@@ -183,8 +184,8 @@ function renderNavItems(role, onNavigate, closeDrawer) {
       mobileNav.appendChild(btn);
     }
 
-    // 頂部 Segmented Control 項目
-    if (topControl) {
+    // 頂部 Segmented Control 項目 (排除 admin-data 以免太擠)
+    if (topControl && route.id !== 'admin-data') {
       const segment = document.createElement('div');
       segment.className = 'segment-btn';
       segment.dataset.route = route.id;
@@ -195,7 +196,7 @@ function renderNavItems(role, onNavigate, closeDrawer) {
   });
 
   createIcons({
-    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers },
+    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database },
     attrs: { class: 'w-5 h-5' }
   });
 }
@@ -205,7 +206,7 @@ function renderNavItems(role, onNavigate, closeDrawer) {
  * @param {string} activeRoute 
  */
 export function updateNavbar(activeRoute) {
-  // 更新側邊欄
+  // 更新側邊欄與手機版側邊欄
   document.querySelectorAll('.nav-item').forEach(item => {
     if (item.dataset.route === activeRoute) {
       item.classList.add('bg-brand/5', 'text-brand', 'font-bold');
@@ -289,6 +290,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792914600
-W: UPGRADE-002
+V: 1792917900
+W: UPGRADE-003
 ═══ */
