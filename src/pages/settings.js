@@ -123,7 +123,7 @@ export default {
 
   getDefaultRouteTemplates(statuses = ['排產中', '印刷', '裁切', '品檢', '出貨']) {
     return [
-      { name: '預設常規路線', steps: [...statuses], isDefault: true }
+      { name: '預設常規路線', category: '', steps: statuses.slice() }
     ];
   },
 
@@ -426,6 +426,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792924000
+V: 1792925200
 W: UPGRADE-004
 ═══ */
