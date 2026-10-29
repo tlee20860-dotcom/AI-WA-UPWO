@@ -11,20 +11,20 @@ import { createIcons, X } from 'lucide';
 export function openModal({ title, content, onClose }) {
   // 建立遮罩與容器
   const overlay = document.createElement('div');
-  overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300 opacity-0';
+  overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300 opacity-0 p-4';
   
   const modal = document.createElement('div');
-  // 使用 tailwind 的 glass-card 風格 (純白背景、圓角20px、細微邊框、柔和陰影)
-  modal.className = 'bg-white border border-slate-100 shadow-soft rounded-[20px] w-full max-w-md mx-4 overflow-hidden transform transition-transform duration-300 scale-95';
+  // 使用 flex flex-col 與 max-h-[90vh] 確保內容不會撐破螢幕
+  modal.className = 'bg-white border border-slate-100 shadow-soft rounded-[20px] w-full max-w-md flex flex-col max-h-[90vh] transform transition-transform duration-300 scale-95 overflow-hidden';
   
   modal.innerHTML = `
-    <div class="flex justify-between items-center p-5 border-b border-slate-100">
+    <div class="flex justify-between items-center p-5 border-b border-slate-100 flex-shrink-0">
       <h3 class="text-lg font-bold text-slate-900">${title}</h3>
       <button id="modal-close-btn" class="text-slate-400 hover:text-slate-600 transition-colors bg-slate-50 hover:bg-slate-100 p-1.5 rounded-full">
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
-    <div class="p-5 text-slate-600">
+    <div class="p-5 text-slate-600 overflow-y-auto flex-1">
       ${content}
     </div>
   `;
@@ -122,7 +122,7 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
 }
 
 /* ═══ EOF ═══
-F: src/ui/modal.js
-V: 1792903509
-W: webapp-20261026-001#21
+F: AI-WA-UPWO/src/ui/modal.js
+V: 1792926000
+W: UPGRADE-004
 ═══ */
