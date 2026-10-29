@@ -89,7 +89,7 @@ export default {
 
     const catSelect = document.getElementById('filter-category');
     if (catSelect) {
-      const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+      const cats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))).sort();
       catSelect.innerHTML = `<option value="ALL">全部類別</option>` + cats.map(c => `<option value="${c}" ${c === currentCategory ? 'selected' : ''}>${c}</option>`).join('');
     }
 
@@ -101,7 +101,7 @@ export default {
     // 依使用者設定的順序對齊欄位
     const visibleFields = (viewConfig['kanban'] || []).map(key => {
       const field = schema.find(f => f.key === key);
-      return field ? { ...field, isVisible: true } : null;
+      return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
 
     renderOrderView({
@@ -138,21 +138,35 @@ export default {
 
         showToast('解析中...', 'info');
         let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
+        let defaultRoute = statuses;
         
         try {
           const s = await getDocument('settings', 'main');
-          if (s) { salesMapping = s.sales_mapping || []; statuses = s.statuses || statuses; schema = s.schema || schema; }
+          if (s) { 
+            salesMapping = s.sales_mapping || []; 
+            statuses = s.statuses || statuses; 
+            schema = s.schema || schema; 
+            // 取得預設製程模板
+            if (s.route_templates && s.route_templates.length > 0) {
+              const defaultTmpl = s.route_templates.find(t => t.isDefault);
+              if (defaultTmpl && defaultTmpl.steps && defaultTmpl.steps.length > 0) {
+                defaultRoute = defaultTmpl.steps;
+              }
+            }
+          }
         } catch (err) {}
 
-        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
+        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, defaultRoute[0], schema);
         let added = 0, updated = 0;
 
         for (const order of parsed) {
           if (await getDocument('work_orders', order.id)) {
-            // 若存在，僅更新 Excel 相關欄位，保留狀態
+            // 若存在，僅更新 Excel 相關欄位，保留狀態與製程
             await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
             updated++;
           } else {
+            // 新工單，寫入預設製程
+            order.route = defaultRoute;
             await setDocument('work_orders', order.id, order);
             added++;
           }
@@ -174,6 +188,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792919800
+V: 1792924400
 W: UPGRADE-004
 ═══ */
