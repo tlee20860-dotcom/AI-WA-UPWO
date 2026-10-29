@@ -1,14 +1,15 @@
 import { createIcons, X } from 'lucide';
 
 /**
- * 建立並顯示一個 Modal
+ * 建立並顯示一個 Modal（三層架構：標題、滾動內容、固定底部）
  * @param {Object} options 設定選項
  * @param {string} options.title 標題
  * @param {string} options.content 內容 HTML
+ * @param {string} options.footer 底部按鈕區 HTML（可選）
  * @param {function} options.onClose 關閉時的回呼
  * @returns {Object} 包含 close 方法的物件，可手動關閉
  */
-export function openModal({ title, content, onClose }) {
+export function openModal({ title, content, footer = '', onClose }) {
   // 建立遮罩與容器
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300 opacity-0 p-4';
@@ -24,9 +25,14 @@ export function openModal({ title, content, onClose }) {
         <i data-lucide="x" class="w-5 h-5"></i>
       </button>
     </div>
-    <div class="p-5 text-slate-600 overflow-y-auto flex-1">
+    <div class="p-5 text-slate-600 overflow-y-auto flex-1 min-h-0">
       ${content}
     </div>
+    ${footer ? `
+      <div class="p-4 border-t border-slate-100 flex-shrink-0 bg-white">
+        ${footer}
+      </div>
+    ` : ''}
   `;
 
   overlay.appendChild(modal);
@@ -82,7 +88,10 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
       : 'bg-brand hover:bg-brand-hover text-white shadow-brand/20';
 
     const content = `
-      <p class="mb-6 text-slate-600">${message}</p>
+      <p class="text-slate-600">${message}</p>
+    `;
+
+    const footer = `
       <div class="flex justify-end gap-3">
         <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">
           ${cancelText}
@@ -96,6 +105,7 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
     const { close, element } = openModal({
       title,
       content,
+      footer,
       onClose: () => resolve(false) // 若透過右上角 X 或遮罩關閉，視為取消
     });
 
@@ -123,6 +133,6 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/modal.js
-V: 1792926000
+V: 1792927000
 W: UPGRADE-004
 ═══ */
