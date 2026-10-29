@@ -58,6 +58,7 @@ export default {
     });
 
     window.addEventListener('refresh-kanban', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', this.updateUI.bind(this));
     createIcons({ icons: { Upload }, attrs: { class: 'w-4 h-4' } });
 
     this.initDataListener();
@@ -194,11 +195,12 @@ export default {
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-kanban', this.updateUI.bind(this));
+    window.removeEventListener('settings-updated', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792925400
+V: 1792926500
 W: UPGRADE-004
 ═══ */
