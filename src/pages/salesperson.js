@@ -36,6 +36,7 @@ export default {
     });
 
     window.addEventListener('refresh-salesperson', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', this.updateUI.bind(this));
 
     this.initDataListener();
   },
@@ -46,7 +47,7 @@ export default {
       currentOrders = orders;
       // 如果第一次載入，自動選中第一個銷售員
       if (!currentRep) {
-        const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))].sort();
+        const reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
         if (reps.length > 0) currentRep = reps[0];
       }
       this.updateUI();
@@ -55,7 +56,7 @@ export default {
 
   updateUI() {
     // 提取所有銷售員
-    const reps = [...new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))].sort();
+    const reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
     
     // 若當前選中的銷售員不存在了，重置為第一個
     if (reps.length > 0 && !reps.includes(currentRep)) {
@@ -83,7 +84,7 @@ export default {
     // 依使用者設定的順序對齊欄位
     const visibleFields = (viewConfig['salesperson'] || []).map(key => {
       const field = schema.find(f => f.key === key);
-      return field ? { ...field, isVisible: true } : null;
+      return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
 
     renderOrderView({
@@ -111,11 +112,12 @@ export default {
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-salesperson', this.updateUI.bind(this));
+    window.removeEventListener('settings-updated', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792920000
+V: 1792926800
 W: UPGRADE-004
 ═══ */
