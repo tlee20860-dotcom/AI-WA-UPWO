@@ -1,4 +1,5 @@
 import { updateDocument } from '../db/write.js';
+import { getDocument } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { AppState } from '../config/state.js';
@@ -95,17 +96,42 @@ document.addEventListener('click', async (e) => {
 
     const allStatuses = AppState.getStatuses() || [];
 
+    // 獲取最新的設定與模板
+    let routeTemplates = [];
+    try {
+      const settings = await getDocument('settings', 'main');
+      if (settings && settings.route_templates) {
+        routeTemplates = settings.route_templates;
+      }
+    } catch (err) {
+      console.warn('無法讀取模板設定', err);
+    }
+
+    const templateOptions = routeTemplates.map((t, i) => {
+      const label = t.category ? `[${t.category}] ${t.name}` : `[通用] ${t.name}`;
+      return `<option value="${i}">${label}</option>`;
+    }).join('');
+
     const content = `
       <div class="flex flex-col gap-4">
-        <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
-        <div class="flex flex-col md:flex-row gap-4 h-[50vh]">
+        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 mb-2">
+          <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
+          <div class="flex items-center gap-2 w-full sm:w-auto">
+            <select id="modal-template-select" class="flex-1 sm:w-48 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand shadow-sm">
+              <option value="">-- 快速套用模板 --</option>
+              ${templateOptions}
+            </select>
+          </div>
+        </div>
+        
+        <div class="flex flex-col md:flex-row gap-4 max-h-[50vh]">
           <!-- 左側：可選工序 -->
-          <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
+          <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col h-[200px] md:h-auto">
             <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
             <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-available-list"></div>
           </div>
           <!-- 右側：預計工序順序 -->
-          <div class="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col shadow-sm">
+          <div class="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col shadow-sm h-[200px] md:h-auto">
             <h4 class="font-bold text-sm text-slate-700 mb-2">預計工序順序</h4>
             <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-selected-list"></div>
           </div>
@@ -201,6 +227,17 @@ document.addEventListener('click', async (e) => {
 
     renderModalLists();
 
+    // 快速套用模板變更事件
+    element.querySelector('#modal-template-select').addEventListener('change', (ev) => {
+      const idx = parseInt(ev.target.value);
+      if (!isNaN(idx) && routeTemplates[idx]) {
+        currentSteps = [...routeTemplates[idx].steps];
+        renderModalLists();
+        showToast(`已套用模板：${routeTemplates[idx].name}`, 'info');
+        ev.target.value = ''; // 重設下拉選單
+      }
+    });
+
     element.querySelector('#modal-cancel-btn').addEventListener('click', close);
 
     element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
@@ -252,6 +289,6 @@ document.addEventListener('click', async (e) => {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792925100
+V: 1792926400
 W: UPGRADE-004
 ═══ */
