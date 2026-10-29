@@ -36,6 +36,7 @@ export default {
     });
 
     window.addEventListener('refresh-category', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', this.updateUI.bind(this));
 
     this.initDataListener();
   },
@@ -45,7 +46,7 @@ export default {
     unsubscribe = listenCollection('work_orders', (orders) => {
       currentOrders = orders;
       if (!currentCategory) {
-        const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+        const cats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))).sort();
         if (cats.length > 0) currentCategory = cats[0];
       }
       this.updateUI();
@@ -53,7 +54,7 @@ export default {
   },
 
   updateUI() {
-    const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+    const cats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))).sort();
     
     if (cats.length > 0 && !cats.includes(currentCategory)) {
       currentCategory = cats[0];
@@ -80,7 +81,7 @@ export default {
     // 依使用者設定的順序對齊欄位
     const visibleFields = (viewConfig['category'] || []).map(key => {
       const field = schema.find(f => f.key === key);
-      return field ? { ...field, isVisible: true } : null;
+      return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
 
     renderOrderView({
@@ -108,11 +109,12 @@ export default {
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-category', this.updateUI.bind(this));
+    window.removeEventListener('settings-updated', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/category.js
-V: 1792919900
+V: 1792926700
 W: UPGRADE-004
 ═══ */
