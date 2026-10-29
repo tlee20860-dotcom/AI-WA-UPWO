@@ -2,7 +2,7 @@ import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { getCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
-import { createIcons, Plus, GripVertical, Trash2, Edit2 } from 'lucide';
+import { createIcons, Plus, GripVertical, Trash2, Edit2, Star, Settings2 } from 'lucide';
 
 /**
  * 渲染狀態管理頁籤
@@ -145,6 +145,223 @@ export function renderStatuses(container, currentSettings, saveSettings) {
 }
 
 /**
+ * 渲染製程模板管理頁籤
+ */
+export function renderRouteTemplates(container, currentSettings, saveSettings) {
+  container.innerHTML = `
+    <div class="flex justify-between items-center mb-6">
+      <div>
+        <h2 class="text-lg font-bold text-slate-800">製程模板管理</h2>
+        <p class="text-sm text-slate-500 mt-1">建立預設生產路線，匯入工單時將自動套用預設模板。</p>
+      </div>
+    </div>
+
+    <div class="flex gap-2 mb-6">
+      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新模板名稱 (例如：常規A)">
+      <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
+        <i data-lucide="plus" class="w-4 h-4"></i> 新增模板
+      </button>
+    </div>
+
+    <div class="flex flex-col gap-3">
+      ${currentSettings.route_templates.map((tmpl, index) => `
+        <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-2">
+              <span class="font-bold text-slate-800 text-base">${tmpl.name}</span>
+              ${tmpl.isDefault ? `<span class="px-2 py-0.5 bg-brand/10 text-brand text-[10px] font-bold rounded">預設</span>` : ''}
+            </div>
+            <div class="flex items-center gap-2">
+              ${!tmpl.isDefault ? `
+                <button class="px-3 py-1.5 text-xs font-medium text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition-colors btn-set-default" data-index="${index}">
+                  設為預設
+                </button>
+              ` : ''}
+              <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-template" data-index="${index}">
+                <i data-lucide="edit-2" class="w-4 h-4"></i>
+              </button>
+              <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-template" data-index="${index}" ${tmpl.isDefault ? 'disabled title="無法刪除預設模板"' : ''}>
+                <i data-lucide="trash-2" class="w-4 h-4"></i>
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center gap-2 text-sm text-slate-600 bg-slate-50 p-3 rounded-lg">
+            ${tmpl.steps.length === 0 ? '<span class="text-slate-400">無設定工序</span>' : ''}
+            ${tmpl.steps.map((s, i) => `
+              <span class="px-2 py-1 bg-white border border-slate-200 rounded-md">${s}</span>
+              ${i < tmpl.steps.length - 1 ? '<span class="text-slate-300">➔</span>' : ''}
+            `).join('')}
+          </div>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  createIcons({ icons: { Plus, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
+
+  // 新增模板
+  document.getElementById('btn-add-template')?.addEventListener('click', async () => {
+    const input = document.getElementById('new-template-name');
+    const name = input.value.trim();
+    if (!name) return;
+    if (currentSettings.route_templates.some(t => t.name === name)) {
+      showToast('模板名稱已存在', 'error');
+      return;
+    }
+    currentSettings.route_templates.push({ name, steps: [], isDefault: false });
+    await saveSettings();
+    showToast('模板已新增，請編輯工序', 'success');
+  });
+
+  // 設為預設
+  document.querySelectorAll('.btn-set-default').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = e.currentTarget.dataset.index;
+      currentSettings.route_templates.forEach((t, i) => {
+        t.isDefault = (i === parseInt(idx));
+      });
+      await saveSettings();
+      showToast('已設為預設模板', 'success');
+    });
+  });
+
+  // 刪除模板
+  document.querySelectorAll('.btn-del-template').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      if (e.currentTarget.disabled) return;
+      const idx = e.currentTarget.dataset.index;
+      const confirmed = await openConfirm({
+        title: '刪除模板',
+        message: '確定要刪除此模板嗎？',
+        isDanger: true
+      });
+      if (!confirmed) return;
+      currentSettings.route_templates.splice(idx, 1);
+      await saveSettings();
+      showToast('模板已刪除', 'success');
+    });
+  });
+
+  // 編輯模板工序
+  document.querySelectorAll('.btn-edit-template').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const idx = parseInt(e.currentTarget.dataset.index);
+      const tmpl = currentSettings.route_templates[idx];
+      
+      const content = `
+        <div class="flex flex-col gap-4">
+          <p class="text-sm text-slate-500">拖曳調整順序，或從下方加入新工序。</p>
+          <div class="flex flex-col gap-2 min-h-[150px] border border-slate-100 rounded-xl p-2 bg-slate-50/50" id="modal-step-list">
+            ${tmpl.steps.map((step, sIdx) => `
+              <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 cursor-grab step-item" draggable="true" data-step="${step}">
+                <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
+                <span class="flex-1 font-medium text-slate-700">${step}</span>
+                <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                </button>
+              </div>
+            `).join('')}
+          </div>
+          <div class="flex gap-2">
+            <select id="modal-add-step-select" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none">
+              <option value="">-- 選擇工序加入 --</option>
+              ${currentSettings.statuses.map(s => `<option value="${s}">${s}</option>`).join('')}
+            </select>
+            <button id="modal-add-step-btn" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors">加入</button>
+          </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+          <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+          <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">儲存</button>
+        </div>
+      `;
+
+      const { close, element } = openModal({ title: `編輯模板：${tmpl.name}`, content });
+      
+      let currentSteps = Array.from(tmpl.steps);
+
+      // 重新渲染列表的輔助函式
+      const renderModalSteps = () => {
+        const listEl = element.querySelector('#modal-step-list');
+        if (currentSteps.length === 0) {
+          listEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">尚無工序</div>';
+          return;
+        }
+        listEl.innerHTML = currentSteps.map(step => `
+          <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 cursor-grab step-item" draggable="true" data-step="${step}">
+            <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
+            <span class="flex-1 font-medium text-slate-700">${step}</span>
+            <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+            </button>
+          </div>
+        `).join('');
+        
+        createIcons({ icons: { GripVertical }, attrs: { class: 'w-4 h-4' } });
+        bindDragEvents();
+        bindRemoveEvents();
+      };
+
+      const bindRemoveEvents = () => {
+        element.querySelectorAll('.btn-remove-step').forEach(b => {
+          b.addEventListener('click', (ev) => {
+            const stepToRemove = ev.currentTarget.dataset.step;
+            currentSteps = currentSteps.filter(s => s !== stepToRemove);
+            renderModalSteps();
+          });
+        });
+      };
+
+      const bindDragEvents = () => {
+        const list = element.querySelector('#modal-step-list');
+        let dragged = null;
+        list.querySelectorAll('.step-item').forEach(item => {
+          item.addEventListener('dragstart', function() {
+            dragged = this;
+            setTimeout(() => this.classList.add('opacity-50'), 0);
+          });
+          item.addEventListener('dragend', function() {
+            this.classList.remove('opacity-50');
+            dragged = null;
+            currentSteps = Array.from(list.querySelectorAll('.step-item')).map(el => el.dataset.step);
+          });
+          item.addEventListener('dragover', function(ev) {
+            ev.preventDefault();
+            if (this === dragged) return;
+            const rect = this.getBoundingClientRect();
+            const next = (ev.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+            list.insertBefore(dragged, next ? this.nextSibling : this);
+          });
+        });
+      };
+
+      renderModalSteps();
+
+      // 加入新步驟
+      element.querySelector('#modal-add-step-btn').addEventListener('click', () => {
+        const select = element.querySelector('#modal-add-step-select');
+        const val = select.value;
+        if (val && !currentSteps.includes(val)) {
+          currentSteps.push(val);
+          renderModalSteps();
+          select.value = '';
+        }
+      });
+
+      element.querySelector('#modal-cancel-btn').addEventListener('click', close);
+
+      // 儲存
+      element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
+        currentSettings.route_templates[idx].steps = currentSteps;
+        await saveSettings();
+        showToast('模板工序已更新', 'success');
+        close();
+      });
+    });
+  });
+}
+
+/**
  * 渲染銷售員對照表管理頁籤
  */
 export function renderMapping(container, currentSettings, saveSettings) {
@@ -212,7 +429,7 @@ export function renderMapping(container, currentSettings, saveSettings) {
           }
         });
         if (changed) {
-          await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
+          await updateDocument('work_orders', order.id, { salesReps: Array.from(new Set(reps)) });
           updateCount++;
         }
       }
@@ -291,7 +508,7 @@ export function renderMapping(container, currentSettings, saveSettings) {
               }
             });
             if (changed) {
-              await updateDocument('work_orders', order.id, { salesReps: [...new Set(reps)] });
+              await updateDocument('work_orders', order.id, { salesReps: Array.from(new Set(reps)) });
               updateCount++;
             }
           }
@@ -319,6 +536,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792919600
+V: 1792924100
 W: UPGRADE-004
 ═══ */
