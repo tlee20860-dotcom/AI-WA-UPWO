@@ -124,26 +124,29 @@ document.addEventListener('click', async (e) => {
           </div>
         </div>
         
-        <div class="flex flex-col md:flex-row gap-4 max-h-[50vh]">
+        <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
           <!-- 左側：可選工序 -->
-          <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col h-[200px] md:h-auto">
+          <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
             <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
             <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-available-list"></div>
           </div>
           <!-- 右側：預計工序順序 -->
-          <div class="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col shadow-sm h-[200px] md:h-auto">
+          <div class="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col shadow-sm">
             <h4 class="font-bold text-sm text-slate-700 mb-2">預計工序順序</h4>
             <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-selected-list"></div>
           </div>
         </div>
       </div>
-      <div class="flex justify-end gap-3 mt-6">
+    `;
+
+    const footer = `
+      <div class="flex justify-end gap-3">
         <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
         <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">儲存</button>
       </div>
     `;
 
-    const { close, element } = openModal({ title: `編輯製程路線 (${id})`, content });
+    const { close, element } = openModal({ title: `編輯製程路線 (${id})`, content, footer });
     
     let currentSteps = Array.from(currentRoute);
 
@@ -289,6 +292,6 @@ document.addEventListener('click', async (e) => {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792926400
+V: 1792927300
 W: UPGRADE-004
 ═══ */
