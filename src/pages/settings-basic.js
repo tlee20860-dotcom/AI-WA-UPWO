@@ -238,7 +238,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
       const tmpl = currentSettings.route_templates[idx];
       
       const content = `
-        <div class="flex flex-col md:flex-row gap-4 mb-4">
+        <div class="flex flex-col md:flex-row gap-4 mb-2">
           <div class="flex-1 flex flex-col gap-1">
             <label class="text-sm font-medium text-slate-700">模板名稱</label>
             <input type="text" id="edit-tmpl-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.name}">
@@ -249,7 +249,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           </div>
         </div>
 
-        <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-2 mt-4">
           <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
           <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
             <!-- 左側：可選工序 -->
@@ -264,13 +264,16 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
             </div>
           </div>
         </div>
-        <div class="flex justify-end gap-3 mt-6">
+      `;
+
+      const footer = `
+        <div class="flex justify-end gap-3">
           <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
           <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">儲存</button>
         </div>
       `;
 
-      const { close, element } = openModal({ title: `編輯模板`, content });
+      const { close, element } = openModal({ title: `編輯模板`, content, footer });
       
       let currentSteps = Array.from(tmpl.steps);
 
@@ -472,13 +475,16 @@ export function renderMapping(container, currentSettings, saveSettings) {
             <input type="text" id="edit-rep-alias" class="w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:border-brand" value="${(oldRep.aliases||[]).join(', ')}">
           </div>
         </div>
-        <div class="flex justify-end gap-3 mt-6">
+      `;
+
+      const footer = `
+        <div class="flex justify-end gap-3">
           <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200 transition-colors">取消</button>
           <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover shadow-md shadow-brand/20 active:scale-95 transition-all">儲存</button>
         </div>
       `;
 
-      const { close, element } = openModal({ title: '編輯銷售員', content });
+      const { close, element } = openModal({ title: '編輯銷售員', content, footer });
 
       element.querySelector('#modal-cancel-btn').addEventListener('click', close);
 
@@ -552,6 +558,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792926300
+V: 1792927200
 W: UPGRADE-004
 ═══ */
