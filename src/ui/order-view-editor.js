@@ -2,7 +2,7 @@ import { updateDocument } from '../db/write.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { AppState } from '../config/state.js';
-import { createIcons, GripVertical } from 'lucide';
+import { createIcons, GripVertical, Plus, X } from 'lucide';
 
 /**
  * 處理行內編輯事件
@@ -97,24 +97,18 @@ document.addEventListener('click', async (e) => {
 
     const content = `
       <div class="flex flex-col gap-4">
-        <p class="text-sm text-slate-500">拖曳調整專屬製程順序，或從下方加入新工序。</p>
-        <div class="flex flex-col gap-2 min-h-[150px] max-h-[300px] overflow-y-auto border border-slate-100 rounded-xl p-2 bg-slate-50/50" id="route-list">
-          ${currentRoute.map(step => `
-            <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 cursor-grab route-item" draggable="true" data-step="${step}">
-              <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
-              <span class="flex-1 font-medium text-slate-700">${step}</span>
-              <button class="text-slate-400 hover:text-rose-500 btn-remove-route" data-step="${step}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-              </button>
-            </div>
-          `).join('')}
-        </div>
-        <div class="flex gap-2">
-          <select id="route-add-select" class="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none">
-            <option value="">-- 選擇工序加入 --</option>
-            ${allStatuses.map(s => `<option value="${s}">${s}</option>`).join('')}
-          </select>
-          <button id="route-add-btn" class="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-medium transition-colors">加入</button>
+        <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
+        <div class="flex flex-col md:flex-row gap-4 h-[50vh]">
+          <!-- 左側：可選工序 -->
+          <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
+            <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
+            <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-available-list"></div>
+          </div>
+          <!-- 右側：預計工序順序 -->
+          <div class="flex-1 bg-white border border-slate-200 rounded-xl p-3 flex flex-col shadow-sm">
+            <h4 class="font-bold text-sm text-slate-700 mb-2">預計工序順序</h4>
+            <div class="flex-1 overflow-y-auto flex flex-col gap-2" id="modal-selected-list"></div>
+          </div>
         </div>
       </div>
       <div class="flex justify-end gap-3 mt-6">
@@ -127,41 +121,64 @@ document.addEventListener('click', async (e) => {
     
     let currentSteps = Array.from(currentRoute);
 
-    const renderSteps = () => {
-      const listEl = element.querySelector('#route-list');
-      if (currentSteps.length === 0) {
-        listEl.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">尚無工序，請加入</div>';
-        return;
-      }
-      listEl.innerHTML = currentSteps.map(step => `
-        <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 cursor-grab route-item" draggable="true" data-step="${step}">
-          <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
-          <span class="flex-1 font-medium text-slate-700">${step}</span>
-          <button class="text-slate-400 hover:text-rose-500 btn-remove-route" data-step="${step}">
-            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
-        </div>
-      `).join('');
+    const renderModalLists = () => {
+      const availableList = element.querySelector('#modal-available-list');
+      const selectedList = element.querySelector('#modal-selected-list');
       
-      createIcons({ icons: { GripVertical }, attrs: { class: 'w-4 h-4' } });
-      bindDragEvents();
-      bindRemoveEvents();
-    };
+      const availableStatuses = allStatuses.filter(s => !currentSteps.includes(s));
 
-    const bindRemoveEvents = () => {
-      element.querySelectorAll('.btn-remove-route').forEach(b => {
-        b.addEventListener('click', (ev) => {
-          const stepToRemove = ev.currentTarget.dataset.step;
-          currentSteps = currentSteps.filter(s => s !== stepToRemove);
-          renderSteps();
+      // 渲染左側
+      if (availableStatuses.length === 0) {
+        availableList.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">所有工序已加入</div>';
+      } else {
+        availableList.innerHTML = availableStatuses.map(status => `
+          <div class="flex items-center gap-3 bg-white p-3 rounded-lg border border-slate-200 cursor-pointer hover:border-brand transition-colors available-item" data-step="${status}">
+            <span class="flex-1 font-medium text-slate-700">${status}</span>
+            <i data-lucide="plus" class="w-4 h-4 text-slate-400"></i>
+          </div>
+        `).join('');
+      }
+
+      // 渲染右側
+      if (currentSteps.length === 0) {
+        selectedList.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">請從左側加入工序</div>';
+      } else {
+        selectedList.innerHTML = currentSteps.map((step, idx) => `
+          <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 cursor-grab step-item" draggable="true" data-step="${step}">
+            <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
+            <span class="flex-1 font-medium text-slate-700"><span class="text-slate-400 mr-1">${idx + 1}.</span>${step}</span>
+            <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
+              <i data-lucide="x" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `).join('');
+      }
+
+      createIcons({ icons: { Plus, GripVertical, X }, attrs: { class: 'w-4 h-4' } });
+      
+      // 綁定左側點擊加入
+      availableList.querySelectorAll('.available-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const step = item.dataset.step;
+          if (!currentSteps.includes(step)) {
+            currentSteps.push(step);
+            renderModalLists();
+          }
         });
       });
-    };
 
-    const bindDragEvents = () => {
-      const list = element.querySelector('#route-list');
+      // 綁定右側移除
+      selectedList.querySelectorAll('.btn-remove-step').forEach(btn => {
+        btn.addEventListener('click', (ev) => {
+          const step = ev.currentTarget.dataset.step;
+          currentSteps = currentSteps.filter(s => s !== step);
+          renderModalLists();
+        });
+      });
+
+      // 綁定右側拖曳
       let dragged = null;
-      list.querySelectorAll('.route-item').forEach(item => {
+      selectedList.querySelectorAll('.step-item').forEach(item => {
         item.addEventListener('dragstart', function() {
           dragged = this;
           setTimeout(() => this.classList.add('opacity-50'), 0);
@@ -169,29 +186,20 @@ document.addEventListener('click', async (e) => {
         item.addEventListener('dragend', function() {
           this.classList.remove('opacity-50');
           dragged = null;
-          currentSteps = Array.from(list.querySelectorAll('.route-item')).map(el => el.dataset.step);
+          currentSteps = Array.from(selectedList.querySelectorAll('.step-item')).map(el => el.dataset.step);
+          renderModalLists(); // 重新渲染以更新序號
         });
         item.addEventListener('dragover', function(ev) {
           ev.preventDefault();
           if (this === dragged) return;
           const rect = this.getBoundingClientRect();
           const next = (ev.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
-          list.insertBefore(dragged, next ? this.nextSibling : this);
+          selectedList.insertBefore(dragged, next ? this.nextSibling : this);
         });
       });
     };
 
-    renderSteps();
-
-    element.querySelector('#route-add-btn').addEventListener('click', () => {
-      const select = element.querySelector('#route-add-select');
-      const val = select.value;
-      if (val && !currentSteps.includes(val)) {
-        currentSteps.push(val);
-        renderSteps();
-        select.value = '';
-      }
-    });
+    renderModalLists();
 
     element.querySelector('#modal-cancel-btn').addEventListener('click', close);
 
@@ -244,6 +252,6 @@ document.addEventListener('click', async (e) => {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792924200
+V: 1792925100
 W: UPGRADE-004
 ═══ */
