@@ -1,5 +1,5 @@
 import { AppState } from '../config/state.js';
-import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search } from 'lucide';
+import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings } from 'lucide';
 
 /**
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
@@ -99,17 +99,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       }
     });
 
-    // 改變事件 (狀態下拉選單 & 行內編輯)
+    // 改變事件 (行內編輯)
     document.addEventListener('change', (e) => {
-      // 狀態變更
-      const select = e.target.closest('select[data-action="change-status"]');
-      if (select) {
-        const id = select.dataset.id;
-        const newStatus = select.value;
-        if (onAction) onAction('status_change', id, newStatus);
-        return;
-      }
-
       // 行內編輯（日期或文字）
       const inlineInput = e.target.closest('input[data-action="inline-edit"]');
       if (inlineInput) {
@@ -147,7 +138,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     });
   }
 
-  const statuses = AppState.getStatuses() || [];
+  const allStatuses = AppState.getStatuses() || [];
 
   // 5. 生成 HTML
   const viewToggleHtml = `
@@ -186,12 +177,32 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const val = getOrderValue(order, f.key);
             
             if (f.key === 'status') {
+              let route = order.route && order.route.length > 0 ? order.route : allStatuses;
+              let idx = route.indexOf(order.status);
+              if (idx === -1) idx = 0;
+              const isFirst = idx <= 0;
+              const isLast = idx >= route.length - 1;
+              const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+
               return `
                 <div class="text-sm flex flex-col gap-1">
                   <span class="text-slate-400">${f.label}:</span>
-                  <select data-action="change-status" data-id="${order.id}" class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
-                    ${statuses.map(s => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
-                  </select>
+                  <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit">
+                    <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                      class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
+                      <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    </button>
+                    <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center">${order.status}</span>
+                    <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                      class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                      <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                    </button>
+                    <div class="w-px h-4 bg-slate-200 mx-1"></div>
+                    <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                      class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
+                      <i data-lucide="settings" class="w-4 h-4"></i>
+                    </button>
+                  </div>
                 </div>
               `;
             }
@@ -199,7 +210,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             // 判斷是否可編輯
             if (f.isEditable) {
               const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
-              // 若為日期，需先格式化，避免瀏覽器不支援
               const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
               
               return `
@@ -221,7 +231,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         </div>
       `).join('') + `</div>`;
   } else {
-    // 動態表格 (已移除第二行篩選列)
+    // 動態表格
     contentHtml = `
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-x-auto w-full">
         <table class="w-full text-left border-collapse min-w-full">
@@ -240,11 +250,31 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               <tr class="hover:bg-slate-50/50 transition-colors">
                 ${displayFields.map(f => {
                   if (f.key === 'status') {
+                    let route = order.route && order.route.length > 0 ? order.route : allStatuses;
+                    let idx = route.indexOf(order.status);
+                    if (idx === -1) idx = 0;
+                    const isFirst = idx <= 0;
+                    const isLast = idx >= route.length - 1;
+                    const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+
                     return `
                       <td class="px-4 py-3 whitespace-nowrap">
-                        <select data-action="change-status" data-id="${order.id}" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
-                          ${statuses.map(s => `<option value="${s}" ${s === order.status ? 'selected' : ''}>${s}</option>`).join('')}
-                        </select>
+                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit">
+                          <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                            class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
+                            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                          </button>
+                          <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center">${order.status}</span>
+                          <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                            class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                          </button>
+                          <div class="w-px h-4 bg-slate-200 mx-1"></div>
+                          <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                            class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
+                            <i data-lucide="settings" class="w-4 h-4"></i>
+                          </button>
+                        </div>
                       </td>
                     `;
                   }
@@ -278,7 +308,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   }
 
   container.innerHTML = viewToggleHtml + contentHtml;
-  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search }, attrs: { class: 'w-3 h-3' } });
+  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Settings }, attrs: { class: 'w-4 h-4' } });
 }
 
 /**
@@ -299,6 +329,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792922300
+V: 1792924300
 W: UPGRADE-004
 ═══ */
