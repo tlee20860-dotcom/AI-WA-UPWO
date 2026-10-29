@@ -17,7 +17,7 @@ export function renderStatuses(container, currentSettings, saveSettings) {
     </div>
     
     <div class="flex gap-2 mb-6">
-      <input type="text" id="new-status-input" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand" placeholder="輸入新狀態名稱...">
+      <input type="text" id="new-status-input" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand" placeholder="輸入新狀態名稱&#8230;">
       <button id="btn-add-status" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
         <i data-lucide="plus" class="w-4 h-4"></i> 新增
       </button>
@@ -251,7 +251,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
 
         <div class="flex flex-col gap-2">
           <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
-          <div class="flex flex-col md:flex-row gap-4 h-[45vh]">
+          <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
             <!-- 左側：可選工序 -->
             <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
               <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
@@ -552,6 +552,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792925300
+V: 1792926300
 W: UPGRADE-004
 ═══ */
