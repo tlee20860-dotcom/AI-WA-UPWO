@@ -151,7 +151,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
           <i data-lucide="search" class="w-4 h-4"></i>
         </div>
-        <input type="text" data-action="global-search" data-page-key="${pageKey}" value="${state.filters['__GLOBAL__'] || ''}" class="w-full pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm" placeholder="搜尋所有欄位...">
+        <input type="text" data-action="global-search" data-page-key="${pageKey}" value="${state.filters['__GLOBAL__'] || ''}" class="w-full pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm" placeholder="搜尋所有欄位&#8230;">
       </div>
     </div>
   `;
@@ -182,19 +182,23 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               if (idx === -1) idx = 0;
               const isFirst = idx <= 0;
               const isLast = idx >= route.length - 1;
+              const prevStep = isFirst ? '' : route[idx - 1];
+              const nextStep = isLast ? '' : route[idx + 1];
               const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
 
               return `
                 <div class="text-sm flex flex-col gap-1">
                   <span class="text-slate-400">${f.label}:</span>
-                  <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit">
+                  <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit max-w-full">
                     <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                      class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
+                      class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
                       <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                      <span class="truncate max-w-[60px]">${prevStep}</span>
                     </button>
-                    <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center">${order.status}</span>
+                    <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center truncate max-w-[100px]">${order.status}</span>
                     <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                      class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                      class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                      <span class="truncate max-w-[60px]">${nextStep}</span>
                       <i data-lucide="chevron-right" class="w-4 h-4"></i>
                     </button>
                     <div class="w-px h-4 bg-slate-200 mx-1"></div>
@@ -255,18 +259,22 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     if (idx === -1) idx = 0;
                     const isFirst = idx <= 0;
                     const isLast = idx >= route.length - 1;
+                    const prevStep = isFirst ? '' : route[idx - 1];
+                    const nextStep = isLast ? '' : route[idx + 1];
                     const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
 
                     return `
                       <td class="px-4 py-3 whitespace-nowrap">
-                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit">
+                        <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit max-w-full">
                           <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                            class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
+                            class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
                             <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                            <span class="truncate max-w-[60px]">${prevStep}</span>
                           </button>
-                          <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center">${order.status}</span>
+                          <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center truncate max-w-[100px]">${order.status}</span>
                           <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                            class="p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                            class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                            <span class="truncate max-w-[60px]">${nextStep}</span>
                             <i data-lucide="chevron-right" class="w-4 h-4"></i>
                           </button>
                           <div class="w-px h-4 bg-slate-200 mx-1"></div>
@@ -329,6 +337,6 @@ function getOrderValue(order, key) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792924300
+V: 1792925500
 W: UPGRADE-004
 ═══ */
