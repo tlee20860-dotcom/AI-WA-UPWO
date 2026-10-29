@@ -9,11 +9,11 @@ import { parseExcelData } from '../domain/parser.js';
 import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check } from 'lucide';
 
 // 引入拆分出去的模組
-import { renderStatuses, renderMapping } from './settings-basic.js';
+import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
 import { renderSchema, renderViewConfig } from './settings-schema.js';
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {} };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [] };
 let activeTab = 'statuses';
 
 export default {
@@ -46,7 +46,8 @@ export default {
           sales_mapping: data.sales_mapping || [],
           users: data.users || [{ username: 'admin', password: '123456', role: 'admin' }],
           schema: data.schema || this.getDefaultSchema(),
-          view_configs: data.view_configs || this.getDefaultViewConfigs()
+          view_configs: data.view_configs || this.getDefaultViewConfigs(),
+          route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中'])
         };
         
         // 自動補齊核心欄位與視圖配置
@@ -56,12 +57,13 @@ export default {
           { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true, isEditable: true },
           { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
           { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
-          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false }
+          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false },
+          { key: 'route', label: '製程路線', type: 'string', isSystem: true, isEditable: false }
         ];
 
         requiredSysFields.forEach(req => {
           if (!currentSettings.schema.some(f => f.key === req.key)) {
-            currentSettings.schema.unshift(req);
+            currentSettings.schema.push(req);
             needSave = true;
           }
         });
@@ -88,7 +90,8 @@ export default {
           sales_mapping: [],
           users: [{ username: 'admin', password: '123456', role: 'admin' }],
           schema: this.getDefaultSchema(),
-          view_configs: this.getDefaultViewConfigs()
+          view_configs: this.getDefaultViewConfigs(),
+          route_templates: this.getDefaultRouteTemplates()
         };
         needSave = true;
       }
@@ -110,10 +113,17 @@ export default {
       { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
       { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
       { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false },
+      { key: 'route', label: '製程路線', type: 'string', isSystem: true, isEditable: false },
       { key: 'amount', label: '金額', type: 'number', isSystem: false, isEditable: true },
       { key: 'customCategory', label: '類別', type: 'string', isSystem: false, isEditable: true },
       { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false, isEditable: true },
       { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false, isEditable: true }
+    ];
+  },
+
+  getDefaultRouteTemplates(statuses = ['排產中', '印刷', '裁切', '品檢', '出貨']) {
+    return [
+      { name: '預設常規路線', steps: [...statuses], isDefault: true }
     ];
   },
 
@@ -137,6 +147,9 @@ export default {
         <div class="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 flex flex-col gap-1 flex-shrink-0 overflow-y-auto">
           <button class="tab-btn ${activeTab === 'statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="statuses">
             <i data-lucide="tag" class="w-4 h-4"></i> 狀態管理
+          </button>
+          <button class="tab-btn ${activeTab === 'route_templates' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="route_templates">
+            <i data-lucide="layers" class="w-4 h-4"></i> 製程模板
           </button>
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
             <i data-lucide="users" class="w-4 h-4"></i> 對照表管理
@@ -169,7 +182,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard },
+      icons: { Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -193,6 +206,8 @@ export default {
     // 委派給拆分出去的模組
     if (activeTab === 'statuses') {
       renderStatuses(content, currentSettings, this.saveSettings.bind(this));
+    } else if (activeTab === 'route_templates') {
+      renderRouteTemplates(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'mapping') {
       renderMapping(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'schema') {
@@ -411,6 +426,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792921500
+V: 1792924000
 W: UPGRADE-004
 ═══ */
