@@ -56,6 +56,7 @@ export default {
     });
 
     window.addEventListener('refresh-table', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', this.updateUI.bind(this));
     createIcons({ icons: { Download, FileText }, attrs: { class: 'w-4 h-4' } });
 
     this.initDataListener();
@@ -72,7 +73,7 @@ export default {
   updateUI() {
     const catSelect = document.getElementById('filter-category');
     if (catSelect) {
-      const cats = [...new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))].sort();
+      const cats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))).sort();
       catSelect.innerHTML = `<option value="ALL">全部類別</option>` + cats.map(c => `<option value="${c}" ${c === currentCategory ? 'selected' : ''}>${c}</option>`).join('');
     }
 
@@ -125,11 +126,12 @@ export default {
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-table', this.updateUI.bind(this));
+    window.removeEventListener('settings-updated', this.updateUI.bind(this));
   }
 };
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792920200
+V: 1792926600
 W: UPGRADE-004
 ═══ */
