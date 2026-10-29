@@ -1,6 +1,7 @@
 import { initRouter } from './router.js';
-import { getCollection } from '../db/read.js';
+import { getCollection, listenDocument } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
+import { AppState } from '../config/state.js';
 import '../ui/order-view-editor.js';
 
 /**
@@ -26,10 +27,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initRouter();
     console.log('[System] UPGRADE-WO 系統啟動成功。');
 
-    // 2. 背景任務：自動修正歷史錯誤日期
+    // 2. 全域監聽設定檔變更（確保工序、模板等即時同步）
+    listenSettingsUpdates();
+
+    // 3. 背景任務：自動修正歷史錯誤日期
     fixLegacyDatesInBackground();
 
-    // 3. 註冊 Service Worker (PWA)
+    // 4. 註冊 Service Worker (PWA)
     registerServiceWorker();
     
   } catch (error) {
@@ -44,6 +48,21 @@ document.addEventListener('DOMContentLoaded', () => {
     `;
   }
 });
+
+/**
+ * 全域監聽設定檔變更
+ */
+function listenSettingsUpdates() {
+  listenDocument('settings', 'main', (data) => {
+    if (!data) return;
+    
+    // 更新 AppState 中的全域狀態
+    if (data.statuses) AppState.setStatuses(data.statuses);
+    
+    // 派發事件，通知所有前台頁面重新渲染
+    window.dispatchEvent(new Event('settings-updated'));
+  });
+}
 
 /**
  * 將 Excel 日期序列號轉換為 YYYY-MM-DD 格式
@@ -132,6 +151,6 @@ function registerServiceWorker() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1792921300
+V: 1792926100
 W: UPGRADE-004
 ═══ */
