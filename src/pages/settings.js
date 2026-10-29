@@ -84,6 +84,31 @@ export default {
           needSave = true;
         }
 
+        // 💡 資料遷移與修復：確保模板皆有 category 欄位，且通用預設模板不會是空的
+        let hasEmptyDefault = false;
+        currentSettings.route_templates.forEach(t => {
+          if (t.category === undefined) {
+            t.category = '';
+            needSave = true;
+          }
+          // 如果發現通用模板（category 為空）卻沒有工序，將其補齊
+          if ((t.category === '' || t.category === '通用') && (!t.steps || t.steps.length === 0)) {
+            t.steps = [...currentSettings.statuses];
+            hasEmptyDefault = true;
+            needSave = true;
+          }
+        });
+
+        // 如果完全沒有通用預設模板，強制建立一個
+        if (!currentSettings.route_templates.some(t => t.category === '' || t.category === '通用')) {
+          currentSettings.route_templates.unshift({
+            name: '預設常規路線',
+            category: '',
+            steps: [...currentSettings.statuses]
+          });
+          needSave = true;
+        }
+
       } else {
         currentSettings = {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
@@ -123,7 +148,7 @@ export default {
 
   getDefaultRouteTemplates(statuses = ['排產中', '印刷', '裁切', '品檢', '出貨']) {
     return [
-      { name: '預設常規路線', category: '', steps: statuses.slice() }
+      { name: '預設常規路線', category: '', steps: [...statuses] }
     ];
   },
 
@@ -426,6 +451,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792925200
+V: 1792926200
 W: UPGRADE-004
 ═══ */
