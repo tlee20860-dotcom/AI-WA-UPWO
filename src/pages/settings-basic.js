@@ -152,13 +152,14 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">製程模板管理</h2>
-        <p class="text-sm text-slate-500 mt-1">建立預設生產路線，匯入工單時將自動套用預設模板。</p>
+        <p class="text-sm text-slate-500 mt-1">建立生產路線並綁定類別，匯入工單時會自動套用對應類別的模板。</p>
       </div>
     </div>
 
-    <div class="flex gap-2 mb-6">
-      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="新模板名稱 (例如：常規A)">
-      <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
+    <div class="flex flex-col sm:flex-row gap-2 mb-6">
+      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="模板名稱 (例如：GF生產流程)">
+      <input type="text" id="new-template-category" class="w-full sm:w-48 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="對應類別 (例：GF)">
+      <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
         <i data-lucide="plus" class="w-4 h-4"></i> 新增模板
       </button>
     </div>
@@ -169,18 +170,16 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="font-bold text-slate-800 text-base">${tmpl.name}</span>
-              ${tmpl.isDefault ? `<span class="px-2 py-0.5 bg-brand/10 text-brand text-[10px] font-bold rounded">預設</span>` : ''}
+              ${tmpl.category 
+                ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded">對應類別：${tmpl.category}</span>` 
+                : `<span class="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">通用預設</span>`
+              }
             </div>
             <div class="flex items-center gap-2">
-              ${!tmpl.isDefault ? `
-                <button class="px-3 py-1.5 text-xs font-medium text-brand bg-brand/5 hover:bg-brand/10 rounded-lg transition-colors btn-set-default" data-index="${index}">
-                  設為預設
-                </button>
-              ` : ''}
               <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-template" data-index="${index}">
                 <i data-lucide="edit-2" class="w-4 h-4"></i>
               </button>
-              <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-template" data-index="${index}" ${tmpl.isDefault ? 'disabled title="無法刪除預設模板"' : ''}>
+              <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-template" data-index="${index}">
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
               </button>
             </div>
@@ -201,34 +200,24 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
 
   // 新增模板
   document.getElementById('btn-add-template')?.addEventListener('click', async () => {
-    const input = document.getElementById('new-template-name');
-    const name = input.value.trim();
+    const nameInput = document.getElementById('new-template-name');
+    const catInput = document.getElementById('new-template-category');
+    const name = nameInput.value.trim();
+    const category = catInput.value.trim().toUpperCase();
+    
     if (!name) return;
     if (currentSettings.route_templates.some(t => t.name === name)) {
       showToast('模板名稱已存在', 'error');
       return;
     }
-    currentSettings.route_templates.push({ name, steps: [], isDefault: false });
+    currentSettings.route_templates.push({ name, category, steps: [] });
     await saveSettings();
     showToast('模板已新增，請編輯工序', 'success');
-  });
-
-  // 設為預設
-  document.querySelectorAll('.btn-set-default').forEach(btn => {
-    btn.addEventListener('click', async (e) => {
-      const idx = e.currentTarget.dataset.index;
-      currentSettings.route_templates.forEach((t, i) => {
-        t.isDefault = (i === parseInt(idx));
-      });
-      await saveSettings();
-      showToast('已設為預設模板', 'success');
-    });
   });
 
   // 刪除模板
   document.querySelectorAll('.btn-del-template').forEach(btn => {
     btn.addEventListener('click', async (e) => {
-      if (e.currentTarget.disabled) return;
       const idx = e.currentTarget.dataset.index;
       const confirmed = await openConfirm({
         title: '刪除模板',
@@ -242,16 +231,27 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
     });
   });
 
-  // 編輯模板工序（左右雙清單）
+  // 編輯模板（左右雙清單與基本資料）
   document.querySelectorAll('.btn-edit-template').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.dataset.index);
       const tmpl = currentSettings.route_templates[idx];
       
       const content = `
-        <div class="flex flex-col gap-4">
+        <div class="flex flex-col md:flex-row gap-4 mb-4">
+          <div class="flex-1 flex flex-col gap-1">
+            <label class="text-sm font-medium text-slate-700">模板名稱</label>
+            <input type="text" id="edit-tmpl-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.name}">
+          </div>
+          <div class="flex-1 flex flex-col gap-1">
+            <label class="text-sm font-medium text-slate-700">對應類別 (留空為通用)</label>
+            <input type="text" id="edit-tmpl-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.category || ''}" placeholder="例：GF">
+          </div>
+        </div>
+
+        <div class="flex flex-col gap-2">
           <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
-          <div class="flex flex-col md:flex-row gap-4 h-[50vh]">
+          <div class="flex flex-col md:flex-row gap-4 h-[45vh]">
             <!-- 左側：可選工序 -->
             <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
               <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
@@ -270,7 +270,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
       `;
 
-      const { close, element } = openModal({ title: `編輯模板：${tmpl.name}`, content });
+      const { close, element } = openModal({ title: `編輯模板`, content });
       
       let currentSteps = Array.from(tmpl.steps);
 
@@ -301,7 +301,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
               <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
               <span class="flex-1 font-medium text-slate-700"><span class="text-slate-400 mr-1">${idx + 1}.</span>${step}</span>
               <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-x"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+                <i data-lucide="x" class="w-4 h-4"></i>
               </button>
             </div>
           `).join('');
@@ -357,9 +357,20 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
       element.querySelector('#modal-cancel-btn').addEventListener('click', close);
 
       element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
+        const newName = element.querySelector('#edit-tmpl-name').value.trim();
+        const newCategory = element.querySelector('#edit-tmpl-category').value.trim().toUpperCase();
+        
+        if (!newName) {
+          showToast('模板名稱不能為空', 'error');
+          return;
+        }
+
+        currentSettings.route_templates[idx].name = newName;
+        currentSettings.route_templates[idx].category = newCategory;
         currentSettings.route_templates[idx].steps = currentSteps;
+        
         await saveSettings();
-        showToast('模板工序已更新', 'success');
+        showToast('模板已更新', 'success');
         close();
       });
     });
@@ -541,6 +552,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792925000
+V: 1792925300
 W: UPGRADE-004
 ═══ */
