@@ -138,7 +138,7 @@ export default {
 
         showToast('解析中...', 'info');
         let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
-        let defaultRoute = statuses;
+        let routeTemplates = [];
         
         try {
           const s = await getDocument('settings', 'main');
@@ -146,27 +146,38 @@ export default {
             salesMapping = s.sales_mapping || []; 
             statuses = s.statuses || statuses; 
             schema = s.schema || schema; 
-            // 取得預設製程模板
-            if (s.route_templates && s.route_templates.length > 0) {
-              const defaultTmpl = s.route_templates.find(t => t.isDefault);
-              if (defaultTmpl && defaultTmpl.steps && defaultTmpl.steps.length > 0) {
-                defaultRoute = defaultTmpl.steps;
-              }
-            }
+            routeTemplates = s.route_templates || [];
           }
         } catch (err) {}
 
-        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, defaultRoute[0], schema);
+        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
         let added = 0, updated = 0;
 
         for (const order of parsed) {
-          if (await getDocument('work_orders', order.id)) {
+          const existing = await getDocument('work_orders', order.id);
+          if (existing) {
             // 若存在，僅更新 Excel 相關欄位，保留狀態與製程
             await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
             updated++;
           } else {
-            // 新工單，寫入預設製程
-            order.route = defaultRoute;
+            // 新工單：依工單類別尋找對應的模板
+            const orderCategory = order.data.category || '其他';
+            
+            // 優先找類別相符的，再找通用預設 (category 為空)
+            let matchedTemplate = routeTemplates.find(t => t.category === orderCategory);
+            if (!matchedTemplate) {
+              matchedTemplate = routeTemplates.find(t => !t.category || t.category === '');
+            }
+
+            // 若找到模板且不為空，套用模板；否則套用全站狀態
+            if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+              order.route = matchedTemplate.steps.slice();
+              order.status = matchedTemplate.steps[0];
+            } else {
+              order.route = statuses.slice();
+              order.status = statuses[0];
+            }
+
             await setDocument('work_orders', order.id, order);
             added++;
           }
@@ -188,6 +199,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792924400
+V: 1792925400
 W: UPGRADE-004
 ═══ */
