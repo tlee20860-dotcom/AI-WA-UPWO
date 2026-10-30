@@ -1,3 +1,4 @@
+~~~javascript
 import { AppState } from '../config/state.js';
 import { renderAppShell, updateNavbar } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
@@ -11,6 +12,7 @@ import SalespersonPage from '../pages/salesperson.js';
 import SettingsPage from '../pages/settings.js';
 import CategoryPage from '../pages/category.js';
 import AdminDataPage from '../pages/admin-data.js';
+import AreaPage from '../pages/area.js';
 
 const routes = {
   login: LoginPage,
@@ -20,7 +22,8 @@ const routes = {
   salesperson: SalespersonPage,
   settings: SettingsPage,
   category: CategoryPage,
-  'admin-data': AdminDataPage
+  'admin-data': AdminDataPage,
+  area: AreaPage
 };
 
 let currentPageInstance = null;
@@ -123,6 +126,6 @@ export function initRouter() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792917800
-W: UPGRADE-003
+V: 1792935200
+W: UPGRADE-005
 ═══ */
