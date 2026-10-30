@@ -2,17 +2,18 @@ import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { getCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
-import { createIcons, Plus, GripVertical, Trash2, Edit2, Star, Settings2, X, Check } from 'lucide';
+import { createIcons, Plus, GripVertical, Trash2, Edit2, Star, Settings2, X, Check, ChevronUp, ChevronDown } from 'lucide';
 
 /**
  * 渲染狀態管理頁籤
+ * 改為上下按鈕排序以支援手機操作
  */
 export function renderStatuses(container, currentSettings, saveSettings) {
   container.innerHTML = `
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">工序狀態管理</h2>
-        <p class="text-sm text-slate-500 mt-1">可拖曳排序。修改名稱時會同步更新歷史工單與區域綁定。</p>
+        <p class="text-sm text-slate-500 mt-1">使用上下箭頭排序。修改名稱時會同步更新歷史工單與區域綁定。</p>
       </div>
     </div>
     
@@ -25,8 +26,15 @@ export function renderStatuses(container, currentSettings, saveSettings) {
 
     <div class="inset-panel p-4 flex flex-col gap-2" id="status-list">
       ${currentSettings.statuses.map((status, index) => `
-        <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm status-item" draggable="true" data-index="${index}">
-          <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
+        <div class="flex items-center gap-2 bg-white p-3 rounded-xl border border-slate-100 shadow-sm status-item" data-index="${index}">
+          <div class="flex items-center gap-1 mr-1">
+            <button class="p-1 text-slate-400 hover:text-brand btn-move-up ${index === 0 ? 'opacity-30' : ''}" data-index="${index}" ${index === 0 ? 'disabled' : ''}>
+              <i data-lucide="chevron-up" class="w-4 h-4"></i>
+            </button>
+            <button class="p-1 text-slate-400 hover:text-brand btn-move-down ${index === currentSettings.statuses.length - 1 ? 'opacity-30' : ''}" data-index="${index}" ${index === currentSettings.statuses.length - 1 ? 'disabled' : ''}>
+              <i data-lucide="chevron-down" class="w-4 h-4"></i>
+            </button>
+          </div>
           <span class="flex-1 font-medium text-slate-700 status-name">${status}</span>
           <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-status" data-status="${status}">
             <i data-lucide="edit-2" class="w-4 h-4"></i>
@@ -39,7 +47,7 @@ export function renderStatuses(container, currentSettings, saveSettings) {
     </div>
   `;
 
-  createIcons({ icons: { Plus, GripVertical, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { Plus, ChevronUp, ChevronDown, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
   // 新增狀態
   document.getElementById('btn-add-status')?.addEventListener('click', async () => {
@@ -53,6 +61,29 @@ export function renderStatuses(container, currentSettings, saveSettings) {
     currentSettings.statuses.push(val);
     await saveSettings();
     showToast('新增成功', 'success');
+  });
+
+  // 上下移動狀態
+  document.querySelectorAll('.btn-move-up').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.currentTarget.dataset.index);
+      if (idx > 0) {
+        [currentSettings.statuses[idx - 1], currentSettings.statuses[idx]] = [currentSettings.statuses[idx], currentSettings.statuses[idx - 1]];
+        await saveSettings();
+        showToast('排序已更新', 'success');
+      }
+    });
+  });
+
+  document.querySelectorAll('.btn-move-down').forEach(btn => {
+    btn.addEventListener('click', async (e) => {
+      const idx = parseInt(e.currentTarget.dataset.index);
+      if (idx < currentSettings.statuses.length - 1) {
+        [currentSettings.statuses[idx + 1], currentSettings.statuses[idx]] = [currentSettings.statuses[idx], currentSettings.statuses[idx + 1]];
+        await saveSettings();
+        showToast('排序已更新', 'success');
+      }
+    });
   });
 
   // 修改狀態
@@ -131,37 +162,6 @@ export function renderStatuses(container, currentSettings, saveSettings) {
       }
     });
   });
-
-  // 拖曳排序
-  const list = document.getElementById('status-list');
-  if (list) {
-    let draggedItem = null;
-
-    list.querySelectorAll('.status-item').forEach(item => {
-      item.addEventListener('dragstart', function() {
-        draggedItem = this;
-        setTimeout(() => this.classList.add('opacity-50'), 0);
-      });
-      item.addEventListener('dragend', function() {
-        this.classList.remove('opacity-50');
-        draggedItem = null;
-        const newOrder = Array.from(list.querySelectorAll('.status-item')).map(el => el.querySelector('.status-name').textContent);
-        currentSettings.statuses = newOrder;
-        const saveHandler = async () => {
-          await saveSettings();
-          showToast('排序已更新', 'success');
-        };
-        saveHandler.call(this);
-      });
-      item.addEventListener('dragover', function(e) {
-        e.preventDefault();
-        if (this === draggedItem) return;
-        const rect = this.getBoundingClientRect();
-        const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
-        list.insertBefore(draggedItem, next ? this.nextSibling : this);
-      });
-    });
-  }
 }
 
 /**
@@ -270,7 +270,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
 
         <div class="flex flex-col gap-2 mt-4">
-          <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
+          <p class="text-sm text-slate-500">點擊左側加入右側，或使用上下箭頭調整順序。</p>
           <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
             <!-- 左側：可選工序 -->
             <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
@@ -319,10 +319,17 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         if (currentSteps.length === 0) {
           selectedList.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">請從左側加入工序</div>';
         } else {
-          selectedList.innerHTML = currentSteps.map((step, idx) => `
-            <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 cursor-grab step-item" draggable="true" data-step="${step}">
-              <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
-              <span class="flex-1 font-medium text-slate-700"><span class="text-slate-400 mr-1">${idx + 1}.</span>${step}</span>
+          selectedList.innerHTML = currentSteps.map((step, i) => `
+            <div class="flex items-center gap-2 bg-slate-50 p-3 rounded-lg border border-slate-200 step-item">
+              <div class="flex flex-col items-center gap-0.5">
+                <button class="p-1 text-slate-400 hover:text-brand btn-move-up ${i === 0 ? 'opacity-30' : ''}" data-idx="${i}" ${i === 0 ? 'disabled' : ''}>
+                  <i data-lucide="chevron-up" class="w-4 h-4"></i>
+                </button>
+                <button class="p-1 text-slate-400 hover:text-brand btn-move-down ${i === currentSteps.length - 1 ? 'opacity-30' : ''}" data-idx="${i}" ${i === currentSteps.length - 1 ? 'disabled' : ''}>
+                  <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                </button>
+              </div>
+              <span class="flex-1 font-medium text-slate-700"><span class="text-slate-400 mr-1">${i + 1}.</span>${step}</span>
               <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
                 <i data-lucide="x" class="w-4 h-4"></i>
               </button>
@@ -330,7 +337,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           `).join('');
         }
 
-        createIcons({ icons: { Plus, GripVertical, X }, attrs: { class: 'w-4 h-4' } });
+        createIcons({ icons: { Plus, ChevronUp, ChevronDown, X }, attrs: { class: 'w-4 h-4' } });
         
         // 綁定左側點擊加入
         availableList.querySelectorAll('.available-item').forEach(item => {
@@ -352,25 +359,25 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           });
         });
 
-        // 綁定右側拖曳
-        let dragged = null;
-        selectedList.querySelectorAll('.step-item').forEach(item => {
-          item.addEventListener('dragstart', function() {
-            dragged = this;
-            setTimeout(() => this.classList.add('opacity-50'), 0);
+        // 綁定右側上移
+        selectedList.querySelectorAll('.btn-move-up').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            const i = parseInt(ev.currentTarget.dataset.idx);
+            if (i > 0) {
+              [currentSteps[i - 1], currentSteps[i]] = [currentSteps[i], currentSteps[i - 1]];
+              renderModalLists();
+            }
           });
-          item.addEventListener('dragend', function() {
-            this.classList.remove('opacity-50');
-            dragged = null;
-            currentSteps = Array.from(selectedList.querySelectorAll('.step-item')).map(el => el.dataset.step);
-            renderModalLists(); // 重新渲染以更新序號
-          });
-          item.addEventListener('dragover', function(ev) {
-            ev.preventDefault();
-            if (this === dragged) return;
-            const rect = this.getBoundingClientRect();
-            const next = (ev.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
-            selectedList.insertBefore(dragged, next ? this.nextSibling : this);
+        });
+
+        // 綁定右側下移
+        selectedList.querySelectorAll('.btn-move-down').forEach(btn => {
+          btn.addEventListener('click', (ev) => {
+            const i = parseInt(ev.currentTarget.dataset.idx);
+            if (i < currentSteps.length - 1) {
+              [currentSteps[i + 1], currentSteps[i]] = [currentSteps[i], currentSteps[i + 1]];
+              renderModalLists();
+            }
           });
         });
       };
@@ -578,6 +585,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792942000
+V: 1792944000
 W: UPGRADE-005
 */
