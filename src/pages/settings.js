@@ -1,3 +1,4 @@
+~~~javascript
 import * as XLSX from 'xlsx';
 import { AppState } from '../config/state.js';
 import { listenDocument, getDocument, getCollection } from '../db/read.js';
@@ -6,14 +7,15 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check } from 'lucide';
+import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check, MapPin } from 'lucide';
 
 // 引入拆分出去的模組
 import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
 import { renderSchema, renderViewConfig } from './settings-schema.js';
+import { renderAreas } from './settings-area.js';
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [] };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [] };
 let activeTab = 'statuses';
 
 export default {
@@ -26,7 +28,7 @@ export default {
 
     renderPageLayout({
       title: '系統設定',
-      subtitle: '管理工序狀態、銷售員對照表、系統欄位與帳號',
+      subtitle: '管理工序狀態、區域、銷售員對照表、系統欄位與帳號',
       headerActions: '',
       stats: [],
       controls: '',
@@ -44,12 +46,26 @@ export default {
         currentSettings = {
           statuses: data.statuses || ['排產中'],
           sales_mapping: data.sales_mapping || [],
-          users: data.users || [{ username: 'admin', password: '123456', role: 'admin' }],
+          users: data.users || [{ username: 'admin', password: '123456', role: 'admin', allowedAreas: [] }],
           schema: data.schema || this.getDefaultSchema(),
           view_configs: data.view_configs || this.getDefaultViewConfigs(),
-          route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中'])
+          route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中']),
+          areas: Array.isArray(data.areas) ? data.areas : []
         };
-        
+
+        // 遷移：areas 不存在
+        if (!Array.isArray(data.areas)) {
+          needSave = true;
+        }
+
+        // 遷移：每個使用者補 allowedAreas 欄位
+        currentSettings.users.forEach(u => {
+          if (!Array.isArray(u.allowedAreas)) {
+            u.allowedAreas = [];
+            needSave = true;
+          }
+        });
+
         // 自動補齊核心欄位與視圖配置
         const requiredSysFields = [
           { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
@@ -84,17 +100,14 @@ export default {
           needSave = true;
         }
 
-        // 💡 資料遷移與修復：確保模板皆有 category 欄位，且通用預設模板不會是空的
-        let hasEmptyDefault = false;
+        // 資料遷移與修復：確保模板皆有 category 欄位，且通用預設模板不會是空的
         currentSettings.route_templates.forEach(t => {
           if (t.category === undefined) {
             t.category = '';
             needSave = true;
           }
-          // 如果發現通用模板（category 為空）卻沒有工序，將其補齊
           if ((t.category === '' || t.category === '通用') && (!t.steps || t.steps.length === 0)) {
             t.steps = [...currentSettings.statuses];
-            hasEmptyDefault = true;
             needSave = true;
           }
         });
@@ -113,14 +126,15 @@ export default {
         currentSettings = {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
           sales_mapping: [],
-          users: [{ username: 'admin', password: '123456', role: 'admin' }],
+          users: [{ username: 'admin', password: '123456', role: 'admin', allowedAreas: [] }],
           schema: this.getDefaultSchema(),
           view_configs: this.getDefaultViewConfigs(),
-          route_templates: this.getDefaultRouteTemplates()
+          route_templates: this.getDefaultRouteTemplates(),
+          areas: []
         };
         needSave = true;
       }
-      
+
       if (needSave) {
         await setDocument('settings', 'main', currentSettings);
       }
@@ -176,6 +190,9 @@ export default {
           <button class="tab-btn ${activeTab === 'route_templates' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="route_templates">
             <i data-lucide="layers" class="w-4 h-4"></i> 製程模板
           </button>
+          <button class="tab-btn ${activeTab === 'areas' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="areas">
+            <i data-lucide="map-pin" class="w-4 h-4"></i> 區域管理
+          </button>
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
             <i data-lucide="users" class="w-4 h-4"></i> 對照表管理
           </button>
@@ -207,7 +224,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers },
+      icons: { Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers, MapPin },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -233,6 +250,8 @@ export default {
       renderStatuses(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'route_templates') {
       renderRouteTemplates(content, currentSettings, this.saveSettings.bind(this));
+    } else if (activeTab === 'areas') {
+      renderAreas(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'mapping') {
       renderMapping(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'schema') {
@@ -249,49 +268,91 @@ export default {
   },
 
   renderUsers(container) {
+    const areas = currentSettings.areas || [];
+
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">帳號管理</h2>
-          <p class="text-sm text-slate-500 mt-1">設定登入系統的帳號與角色。</p>
+          <p class="text-sm text-slate-500 mt-1">設定登入系統的帳號、角色與可見區域。</p>
         </div>
       </div>
 
-      <div class="flex gap-2 mb-6">
-        <input type="text" id="new-user-name" class="w-1/3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="帳號">
-        <input type="text" id="new-user-pass" class="w-1/3 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="密碼">
-        <select id="new-user-role" class="w-1/6 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
-          <option value="user">一般使用者</option>
-          <option value="admin">管理員</option>
-        </select>
-        <button id="btn-add-user" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
-          <i data-lucide="plus" class="w-4 h-4"></i> 新增
-        </button>
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-4 mb-6 flex flex-col gap-3">
+        <div class="text-sm font-semibold text-slate-700">新增帳號</div>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <input type="text" id="new-user-name" class="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="帳號">
+          <input type="text" id="new-user-pass" class="flex-1 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="密碼">
+          <select id="new-user-role" class="w-full sm:w-40 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none">
+            <option value="user">一般使用者</option>
+            <option value="admin">管理員</option>
+          </select>
+        </div>
+        <div id="new-user-areas-wrapper" class="flex flex-col gap-1.5">
+          <label class="text-sm font-medium text-slate-600">可見區域（不勾選 = 全部區域；admin 不受限）</label>
+          <div class="flex flex-wrap gap-2">
+            ${areas.length === 0 ? '<span class="text-xs text-slate-400">尚未建立任何區域</span>' : ''}
+            ${areas.map(a => `
+              <label class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+                <input type="checkbox" class="new-user-area-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${a.id}">
+                <span class="text-slate-700">${a.name}</span>
+              </label>
+            `).join('')}
+          </div>
+        </div>
+        <div class="flex justify-end">
+          <button id="btn-add-user" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i> 新增帳號
+          </button>
+        </div>
       </div>
 
       <div class="flex flex-col gap-2">
-        ${currentSettings.users.map((u, index) => `
-          <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
-            <div class="w-1/3 font-bold text-slate-800">${u.username}</div>
-            <div class="w-1/3 text-slate-500 font-mono text-sm">••••••••</div>
-            <div class="w-1/6">
-              <span class="px-2 py-1 text-xs font-medium rounded-md ${u.role === 'admin' ? 'bg-brand/10 text-brand' : 'bg-slate-100 text-slate-600'}">${u.role}</span>
+        ${currentSettings.users.map((u, index) => {
+          const uAreas = Array.isArray(u.allowedAreas) ? u.allowedAreas : [];
+          const areaLabels = uAreas.map(id => {
+            const a = areas.find(x => x.id === id);
+            return a ? a.name : id;
+          });
+          const isAdmin = u.role === 'admin';
+          return `
+            <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+              <div class="w-1/4 font-bold text-slate-800">${u.username}</div>
+              <div class="w-1/4 text-slate-500 font-mono text-sm">••••••••</div>
+              <div class="w-1/6">
+                <span class="px-2 py-1 text-xs font-medium rounded-md ${isAdmin ? 'bg-brand/10 text-brand' : 'bg-slate-100 text-slate-600'}">${u.role}</span>
+              </div>
+              <div class="flex-1 flex flex-wrap gap-1">
+                ${isAdmin
+                  ? '<span class="text-xs text-slate-400">不受區域限制</span>'
+                  : (uAreas.length === 0
+                      ? '<span class="text-xs text-slate-400">全部區域</span>'
+                      : areaLabels.map(l => `<span class="px-2 py-0.5 bg-slate-100 text-slate-600 rounded text-xs">${l}</span>`).join('')
+                    )
+                }
+              </div>
+              <div class="flex items-center gap-1">
+                <button class="p-1.5 text-slate-400 hover:text-brand hover:bg-slate-50 rounded-lg transition-colors btn-edit-user" data-index="${index}">
+                  <i data-lucide="edit-2" class="w-4 h-4"></i>
+                </button>
+                <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-user" data-index="${index}" ${u.username === 'admin' ? 'disabled title="無法刪除預設 admin"' : ''}>
+                  <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
+              </div>
             </div>
-            <button class="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded-lg transition-colors btn-del-user" data-index="${index}" ${u.username === 'admin' ? 'disabled title="無法刪除預設 admin"' : ''}>
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
-          </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
     `;
 
-    createIcons({ icons: { Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
+    createIcons({ icons: { Plus, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
+    // 新增使用者
     document.getElementById('btn-add-user')?.addEventListener('click', async () => {
       const name = document.getElementById('new-user-name').value.trim();
       const pass = document.getElementById('new-user-pass').value.trim();
       const role = document.getElementById('new-user-role').value;
-      
+
       if (!name || !pass) {
         showToast('請填寫帳號與密碼', 'error');
         return;
@@ -300,11 +361,17 @@ export default {
         showToast('帳號已存在', 'error');
         return;
       }
-      currentSettings.users.push({ username: name, password: pass, role });
+
+      const allowedAreas = role === 'admin'
+        ? []
+        : Array.from(document.querySelectorAll('.new-user-area-checkbox:checked')).map(cb => cb.value);
+
+      currentSettings.users.push({ username: name, password: pass, role, allowedAreas });
       await this.saveSettings();
       showToast('新增成功', 'success');
     });
 
+    // 刪除使用者
     document.querySelectorAll('.btn-del-user').forEach(btn => {
       btn.addEventListener('click', async (e) => {
         if (e.currentTarget.disabled) return;
@@ -312,6 +379,99 @@ export default {
         currentSettings.users.splice(idx, 1);
         await this.saveSettings();
         showToast('刪除成功', 'success');
+      });
+    });
+
+    // 編輯使用者
+    document.querySelectorAll('.btn-edit-user').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.index);
+        const user = currentSettings.users[idx];
+        const isAdmin = user.role === 'admin';
+        const userAreas = Array.isArray(user.allowedAreas) ? user.allowedAreas : [];
+
+        const content = `
+          <div class="flex flex-col gap-4">
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-slate-700">帳號</label>
+              <input type="text" id="edit-user-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${user.username}" ${user.username === 'admin' ? 'disabled' : ''}>
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-slate-700">密碼</label>
+              <input type="text" id="edit-user-pass" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${user.password}">
+            </div>
+            <div class="flex flex-col gap-1">
+              <label class="text-sm font-medium text-slate-700">角色</label>
+              <select id="edit-user-role" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" ${user.username === 'admin' ? 'disabled' : ''}>
+                <option value="user" ${user.role === 'user' ? 'selected' : ''}>一般使用者</option>
+                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>管理員</option>
+              </select>
+            </div>
+            <div id="edit-user-areas-wrapper" class="flex flex-col gap-1.5 ${isAdmin ? 'hidden' : ''}">
+              <label class="text-sm font-medium text-slate-700">可見區域（不勾選 = 全部區域）</label>
+              <div class="flex flex-wrap gap-2">
+                ${areas.length === 0 ? '<span class="text-xs text-slate-400">尚未建立任何區域</span>' : ''}
+                ${areas.map(a => `
+                  <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+                    <input type="checkbox" class="edit-user-area-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${a.id}" ${userAreas.includes(a.id) ? 'checked' : ''}>
+                    <span class="text-slate-700">${a.name}</span>
+                  </label>
+                `).join('')}
+              </div>
+            </div>
+          </div>
+        `;
+
+        const footer = `
+          <div class="flex justify-end gap-3">
+            <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+            <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">儲存</button>
+          </div>
+        `;
+
+        const { close, element } = openModal({ title: '編輯帳號', content, footer });
+
+        // 角色切換時顯示/隱藏區域選擇
+        element.querySelector('#edit-user-role')?.addEventListener('change', (ev) => {
+          const wrapper = element.querySelector('#edit-user-areas-wrapper');
+          if (ev.target.value === 'admin') {
+            wrapper.classList.add('hidden');
+          } else {
+            wrapper.classList.remove('hidden');
+          }
+        });
+
+        element.querySelector('#modal-cancel-btn').addEventListener('click', close);
+
+        element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
+          const newName = element.querySelector('#edit-user-name').value.trim();
+          const newPass = element.querySelector('#edit-user-pass').value.trim();
+          const newRole = element.querySelector('#edit-user-role').value;
+
+          if (!newName || !newPass) {
+            showToast('帳號與密碼不能為空', 'error');
+            return;
+          }
+          if (newName !== user.username && currentSettings.users.some(u => u.username === newName)) {
+            showToast('帳號已存在', 'error');
+            return;
+          }
+
+          const newAllowedAreas = newRole === 'admin'
+            ? []
+            : Array.from(element.querySelectorAll('.edit-user-area-checkbox:checked')).map(cb => cb.value);
+
+          currentSettings.users[idx] = {
+            username: newName,
+            password: newPass,
+            role: newRole,
+            allowedAreas: newAllowedAreas
+          };
+
+          await this.saveSettings();
+          showToast('已更新帳號', 'success');
+          close();
+        });
       });
     });
   },
@@ -386,7 +546,7 @@ export default {
     fileInput?.addEventListener('change', async (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      
+
       const reader = new FileReader();
       reader.onload = async (evt) => {
         try {
@@ -394,7 +554,7 @@ export default {
           const workbook = XLSX.read(data, { type: 'array' });
           const firstSheetName = workbook.SheetNames[0];
           const worksheet = workbook.Sheets[firstSheetName];
-          
+
           const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 });
           if (jsonData.length < 2) {
             showToast('Excel 檔案沒有資料', 'error');
@@ -426,7 +586,7 @@ export default {
           }
 
           showToast(`匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`, 'success');
-          fileInput.value = ''; 
+          fileInput.value = '';
         } catch (error) {
           console.error('Import Error:', error);
           showToast(`匯入失敗：${error.message || '請檢查檔案格式'}`, 'error');
@@ -451,6 +611,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792927100
-W: UPGRADE-004
+V: 1792936000
+W: UPGRADE-005
 ═══ */
