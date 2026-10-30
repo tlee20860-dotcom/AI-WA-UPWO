@@ -52,6 +52,17 @@ function renderStatusBlock(status, orders, allStatuses) {
   `;
 }
 
+/**
+ * 取得工單的類別 (優先從 data.category，其次從工單號前兩碼)
+ */
+function getOrderCategory(order) {
+  if (order.data && order.data.category) {
+    return String(order.data.category).toUpperCase();
+  }
+  const match = String(order.id).match(/^[a-zA-Z]+/);
+  return match ? match[0].toUpperCase() : '其他';
+}
+
 export default {
   async render() {
     const user = AppState.getUser();
@@ -103,12 +114,13 @@ export default {
       return id && !id.includes('***') && !id.includes('訂單');
     });
 
-    // 2. 建立「全域」工序 → 區域映射（基於全部 areas，不受權限影響）
-    //    這一步必須用全部 areas，否則未授權區域的工序會被誤判為「未分配」而外洩。
-    const statusToArea = {};
+    // 2. 建立「全域」工序 → 區域映射
+    // 因為一個工序可以綁定多個區域，所以值為 Array
+    const statusToAreaIds = {};
     areas.forEach(area => {
       (area.statuses || []).forEach(s => {
-        statusToArea[s] = area.id;
+        if (!statusToAreaIds[s]) statusToAreaIds[s] = [];
+        statusToAreaIds[s].push(area.id);
       });
     });
 
@@ -125,11 +137,11 @@ export default {
     }
     const visibleAreaIds = new Set(visibleAreas.map(a => a.id));
 
-    // 4. 真正未綁定的工序 = allStatuses 中不在 statusToArea 者
-    const unassignedStatuses = allStatuses.filter(s => !statusToArea[s]);
+    // 4. 真正未綁定的工序 = allStatuses 中不在 statusToAreaIds 者
+    const unassignedStatuses = allStatuses.filter(s => !statusToAreaIds[s]);
 
-    // 5. 收集「未知工序」：工單 status 不在 allStatuses 也不在 statusToArea
-    const knownStatuses = new Set([...allStatuses, ...Object.keys(statusToArea)]);
+    // 5. 收集「未知工序」：工單 status 不在 allStatuses 也不在 statusToAreaIds
+    const knownStatuses = new Set([...allStatuses, ...Object.keys(statusToAreaIds)]);
     const unknownStatuses = new Set();
     cleanOrders.forEach(o => {
       if (o.status && !knownStatuses.has(o.status)) {
@@ -156,27 +168,40 @@ export default {
     // 7. 分派工單
     cleanOrders.forEach(order => {
       const status = order.status;
-      const areaId = statusToArea[status];
+      const areaIds = statusToAreaIds[status] || [];
+      const orderCategory = getOrderCategory(order);
 
-      if (areaId) {
-        // 屬於某區域的工序
-        if (visibleAreaIds.has(areaId) && ordersByArea[areaId] && ordersByArea[areaId][status]) {
+      let isAssignedToAnyArea = false;
+
+      // 檢查該工序所屬的所有區域
+      areaIds.forEach(areaId => {
+        isAssignedToAnyArea = true; // 標記此工序有被綁定到某個區域
+
+        // 如果該區域不在當前使用者的可見範圍內，直接跳過
+        if (!visibleAreaIds.has(areaId)) return;
+
+        const area = areas.find(a => a.id === areaId);
+        if (!area) return;
+
+        // 類別過濾：若區域有設定類別，則必須與工單類別相符
+        const areaCategory = area.category ? String(area.category).toUpperCase() : '';
+        const categoryMatch = !areaCategory || areaCategory === orderCategory;
+
+        if (categoryMatch && ordersByArea[areaId] && ordersByArea[areaId][status]) {
           ordersByArea[areaId][status].push(order);
         }
-        // 未授權區域的工單：完全不出現（不進未分配）
-        return;
-      }
+      });
 
-      // 未綁定任何區域的工序
-      if (status && unassignedOrders[status]) {
-        unassignedOrders[status].push(order);
-        return;
+      // 如果該工序完全沒有被綁定到任何區域，則進入「未分配區域」
+      if (!isAssignedToAnyArea) {
+        if (status && unassignedOrders[status]) {
+          unassignedOrders[status].push(order);
+        } else {
+          const key = status || '__EMPTY__';
+          if (!unknownOrders[key]) unknownOrders[key] = [];
+          unknownOrders[key].push(order);
+        }
       }
-
-      // 未知工序（status 不在 allStatuses 也不在 statusToArea）
-      const key = status || '__EMPTY__';
-      if (!unknownOrders[key]) unknownOrders[key] = [];
-      unknownOrders[key].push(order);
     });
 
     // 8. 組裝 HTML
@@ -213,12 +238,17 @@ export default {
         renderStatusBlock(status, areaOrders[status] || [], allStatuses)
       ).join('');
 
+      const categoryLabel = area.category 
+        ? `<span class="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold">${area.category}</span>` 
+        : '';
+
       return `
         <div class="glass-card p-4 flex flex-col gap-3">
-          <div class="flex items-center gap-2">
+          <div class="flex items-center gap-2 flex-wrap">
             <i data-lucide="map-pin" class="w-5 h-5 text-brand"></i>
             <h2 class="text-base font-bold text-slate-800">${area.name}</h2>
-            <span class="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded font-medium">${totalCount} 單</span>
+            ${categoryLabel}
+            <span class="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded font-medium ml-auto">${totalCount} 單</span>
           </div>
           ${totalCount === 0 ? `<div class="text-sm text-slate-400 py-2">暫無工單</div>` : statusBlocks}
         </div>
@@ -241,11 +271,11 @@ export default {
     let unassignedHtml = '';
     if (unassignedTotal > 0) {
       unassignedHtml = `
-        <div class="glass-card p-4 flex flex-col gap-3 border-dashed">
+        <div class="glass-card p-4 flex flex-col gap-3 border-dashed border-2 border-slate-200 shadow-none">
           <div class="flex items-center gap-2">
             <i data-lucide="inbox" class="w-5 h-5 text-slate-400"></i>
-            <h2 class="text-base font-bold text-slate-800">未分配區域</h2>
-            <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-medium">${unassignedTotal} 單</span>
+            <h2 class="text-base font-bold text-slate-600">未分配區域</h2>
+            <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded font-medium ml-auto">${unassignedTotal} 單</span>
           </div>
           ${unassignedBlocks}
           ${unknownBlocks}
@@ -284,6 +314,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/area.js
-V: 1792937600
+V: 1792951000
 W: UPGRADE-005
 */
