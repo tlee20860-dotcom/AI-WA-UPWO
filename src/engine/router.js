@@ -1,4 +1,3 @@
-~~~javascript
 import { AppState } from '../config/state.js';
 import { renderAppShell, updateNavbar } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
@@ -124,8 +123,8 @@ export function initRouter() {
   handleRoute();
 }
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792935200
+V: 1792938400
 W: UPGRADE-005
 */
