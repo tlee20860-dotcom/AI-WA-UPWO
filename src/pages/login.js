@@ -139,8 +139,8 @@ export default {
   }
 };
 
-/* ═══ EOF ═══
+/* EOF
 F: AI-WA-UPWO/src/pages/login.js
 V: 1792936800
 W: UPGRADE-005
-═══ */
+*/
