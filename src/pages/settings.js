@@ -1,4 +1,3 @@
-~~~javascript
 import * as XLSX from 'xlsx';
 import { AppState } from '../config/state.js';
 import { listenDocument, getDocument, getCollection } from '../db/read.js';
@@ -609,8 +608,8 @@ export default {
   }
 };
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792936000
+V: 1792941600
 W: UPGRADE-005
 */
