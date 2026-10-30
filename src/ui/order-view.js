@@ -1,5 +1,5 @@
 import { AppState } from '../config/state.js';
-import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings } from 'lucide';
+import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings, Plus } from 'lucide';
 
 /**
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
@@ -23,8 +23,16 @@ const viewStates = {};
 
 /**
  * 核心渲染器：完全數據驅動
+ * @param {Object} options
+ * @param {string} options.containerId 容器 ID
+ * @param {Array} options.orders 工單陣列
+ * @param {Array} options.visibleFields 顯示欄位
+ * @param {boolean} options.isAdmin 是否為管理員
+ * @param {string} options.pageKey 頁面識別碼
+ * @param {Array} options.route_templates 所有的生產流程模板
+ * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -85,6 +93,16 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       if (actionBtn) {
         if (onAction) onAction('delete', actionBtn.dataset.id);
       }
+
+      // 快速新增流程
+      const addRouteBtn = e.target.closest('[data-action="open-route-builder"]');
+      if (addRouteBtn) {
+        const id = addRouteBtn.dataset.id;
+        const cat = addRouteBtn.dataset.category;
+        window.dispatchEvent(new CustomEvent('open-route-builder', { 
+          detail: { orderId: id, defaultCategory: cat } 
+        }));
+      }
     });
 
     // 輸入事件 (全域搜尋)
@@ -99,7 +117,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       }
     });
 
-    // 改變事件 (行內編輯)
+    // 改變事件 (行內編輯 & 下拉選單)
     document.addEventListener('change', (e) => {
       // 行內編輯（日期或文字）
       const inlineInput = e.target.closest('input[data-action="inline-edit"]');
@@ -112,6 +130,18 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         window.dispatchEvent(new CustomEvent('inline-edit', { 
           detail: { id, key, value } 
         }));
+        return;
+      }
+
+      // 切換生產流程下拉選單
+      const routeSelect = e.target.closest('select[data-action="select-route"]');
+      if (routeSelect) {
+        const id = routeSelect.dataset.id;
+        const templateName = routeSelect.value;
+        window.dispatchEvent(new CustomEvent('change-route', { 
+          detail: { id, templateName } 
+        }));
+        return;
       }
     });
 
@@ -211,6 +241,39 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               `;
             }
             
+            // 處理生產流程下拉選單
+            if (f.key === 'route_select') {
+              const orderCat = getOrderCategory(order);
+              // 過濾出符合該工單類別的模板（或無類別限制的通用模板）
+              const availableTemplates = (route_templates || []).filter(t => {
+                if (!t.categories || t.categories.length === 0) return true;
+                return t.categories.includes(orderCat);
+              });
+
+              // 尋找目前吻合的模板
+              let currentMatchName = '';
+              availableTemplates.forEach(t => {
+                if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
+                  currentMatchName = t.name;
+                }
+              });
+
+              return `
+                <div class="text-sm flex flex-col gap-1">
+                  <span class="text-slate-400">${f.label}:</span>
+                  <div class="flex items-center gap-2">
+                    <select data-action="select-route" data-id="${order.id}" class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
+                      <option value="">(自訂流程)</option>
+                      ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                    </select>
+                    <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
+                      <i data-lucide="plus" class="w-4 h-4"></i>
+                    </button>
+                  </div>
+                </div>
+              `;
+            }
+
             // 判斷是否可編輯
             if (f.isEditable) {
               const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
@@ -286,6 +349,36 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       </td>
                     `;
                   }
+
+                  // 處理生產流程下拉選單 (表格模式)
+                  if (f.key === 'route_select') {
+                    const orderCat = getOrderCategory(order);
+                    const availableTemplates = (route_templates || []).filter(t => {
+                      if (!t.categories || t.categories.length === 0) return true;
+                      return t.categories.includes(orderCat);
+                    });
+
+                    let currentMatchName = '';
+                    availableTemplates.forEach(t => {
+                      if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
+                        currentMatchName = t.name;
+                      }
+                    });
+
+                    return `
+                      <td class="px-4 py-3 whitespace-nowrap">
+                        <div class="flex items-center gap-1">
+                          <select data-action="select-route" data-id="${order.id}" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand w-32 md:w-40">
+                            <option value="">(自訂流程)</option>
+                            ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                          </select>
+                          <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                          </button>
+                        </div>
+                      </td>
+                    `;
+                  }
                   
                   // 判斷是否可編輯
                   if (f.isEditable) {
@@ -316,7 +409,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   }
 
   container.innerHTML = viewToggleHtml + contentHtml;
-  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Settings }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Settings, Plus }, attrs: { class: 'w-4 h-4' } });
 }
 
 /**
@@ -335,8 +428,19 @@ function getOrderValue(order, key) {
   return order[key] !== undefined ? order[key] : '';
 }
 
-/* ═══ EOF ═══
+/**
+ * 取得工單類別
+ */
+function getOrderCategory(order) {
+  if (order.data && order.data.category) {
+    return String(order.data.category).toUpperCase();
+  }
+  const match = String(order.id).match(/^[a-zA-Z]+/);
+  return match ? match[0].toUpperCase() : '其他';
+}
+
+/*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792925500
-W: UPGRADE-004
-═══ */
+V: 1792953000
+W: UPGRADE-005
+*/
