@@ -1,4 +1,3 @@
-~~~javascript
 import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin } from 'lucide';
 
 /**
@@ -299,8 +298,8 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
   });
 }
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792935600
+V: 1792939200
 W: UPGRADE-005
 */
