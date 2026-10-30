@@ -609,8 +609,8 @@ export default {
   }
 };
 
-/* ═══ EOF ═══
+/* EOF
 F: AI-WA-UPWO/src/pages/settings.js
 V: 1792936000
 W: UPGRADE-005
-═══ */
+*/
