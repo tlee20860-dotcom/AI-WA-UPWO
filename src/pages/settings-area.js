@@ -5,6 +5,7 @@ import { createIcons, Plus, GripVertical, Trash2, Edit2, X, MapPin, AlertCircle 
 /**
  * 渲染「區域管理」頁籤
  * - 新增／改名／刪除區域
+ * - 拖曳排序區域
  * - 雙清單拖曳綁定工序
  * - 一個工序最多屬於一個區域（已在其他區域的工序顯示為已綁定並禁用）
  *
@@ -20,7 +21,7 @@ export function renderAreas(container, currentSettings, saveSettings) {
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">區域管理</h2>
-        <p class="text-sm text-slate-500 mt-1">新增區域並綁定工序。一個工序最多屬於一個區域；未綁定的工序會歸入「未分配區域」。</p>
+        <p class="text-sm text-slate-500 mt-1">可拖曳排序。新增區域並綁定工序。一個工序最多屬於一個區域；未綁定的工序會歸入「未分配區域」。</p>
       </div>
     </div>
 
@@ -31,16 +32,17 @@ export function renderAreas(container, currentSettings, saveSettings) {
       </button>
     </div>
 
-    <div class="flex flex-col gap-3">
+    <div class="flex flex-col gap-3" id="area-list">
       ${areas.length === 0 ? '<div class="text-slate-400 text-sm py-4 text-center">尚無區域，請先新增</div>' : ''}
       ${areas.map((area, index) => {
         const boundStatuses = area.statuses || [];
         return `
-          <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
+          <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm area-item" draggable="true" data-index="${index}">
             <div class="flex items-center justify-between mb-3">
               <div class="flex items-center gap-2">
+                <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
                 <i data-lucide="map-pin" class="w-5 h-5 text-brand"></i>
-                <span class="font-bold text-slate-800">${area.name}</span>
+                <span class="font-bold text-slate-800 area-name">${area.name}</span>
                 <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded">${boundStatuses.length} 個工序</span>
               </div>
               <div class="flex items-center gap-2">
@@ -65,7 +67,7 @@ export function renderAreas(container, currentSettings, saveSettings) {
     </div>
   `;
 
-  createIcons({ icons: { Plus, Trash2, Edit2, MapPin }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { Plus, Trash2, Edit2, MapPin, GripVertical }, attrs: { class: 'w-4 h-4' } });
 
   // ── 新增區域 ──
   document.getElementById('btn-add-area')?.addEventListener('click', async () => {
@@ -89,6 +91,7 @@ export function renderAreas(container, currentSettings, saveSettings) {
   // ── 刪除區域 ──
   document.querySelectorAll('.btn-del-area').forEach(btn => {
     btn.addEventListener('click', async (e) => {
+      e.stopPropagation(); // 防止觸發拖曳
       const idx = parseInt(e.currentTarget.dataset.index);
       const area = areas[idx];
       const confirmed = await openConfirm({
@@ -104,9 +107,52 @@ export function renderAreas(container, currentSettings, saveSettings) {
     });
   });
 
+  // ── 區域拖曳排序 ──
+  const areaList = document.getElementById('area-list');
+  if (areaList) {
+    let draggedItem = null;
+
+    areaList.querySelectorAll('.area-item').forEach(item => {
+      item.addEventListener('dragstart', function(e) {
+        // 如果點擊的是按鈕或輸入框，不觸發拖曳
+        if (e.target.closest('button') || e.target.closest('input')) {
+          e.preventDefault();
+          return;
+        }
+        draggedItem = this;
+        setTimeout(() => this.classList.add('opacity-50'), 0);
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      item.addEventListener('dragend', async function() {
+        this.classList.remove('opacity-50');
+        draggedItem = null;
+        
+        // 收集新順序的 index
+        const newOrderIndexes = Array.from(areaList.querySelectorAll('.area-item')).map(el => parseInt(el.dataset.index));
+        
+        // 重新排序 currentSettings.areas
+        const newAreas = newOrderIndexes.map(i => currentSettings.areas[i]);
+        currentSettings.areas = newAreas;
+
+        await saveSettings();
+        showToast('區域順序已更新', 'success');
+      });
+
+      item.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        if (this === draggedItem) return;
+        const rect = this.getBoundingClientRect();
+        const next = (e.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
+        areaList.insertBefore(draggedItem, next ? this.nextSibling : this);
+      });
+    });
+  }
+
   // ── 編輯區域（改名 + 雙清單綁定工序） ──
   document.querySelectorAll('.btn-edit-area').forEach(btn => {
     btn.addEventListener('click', (e) => {
+      e.stopPropagation(); // 防止觸發拖曳
       const idx = parseInt(e.currentTarget.dataset.index);
       const area = areas[idx];
 
@@ -270,6 +316,6 @@ export function renderAreas(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-area.js
-V: 1792938000
+V: 1792943300
 W: UPGRADE-005
 */
