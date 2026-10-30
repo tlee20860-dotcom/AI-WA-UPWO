@@ -6,12 +6,13 @@ import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { createIcons, Download, FileText } from 'lucide';
+import { createIcons, Download, FileText, Plus } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
 let schema = [];
 let viewConfig = {};
+let route_templates = [];
 let currentCategory = 'ALL';
 
 export default {
@@ -23,14 +24,18 @@ export default {
       if (settingsDoc) {
         schema = settingsDoc.schema || [];
         viewConfig = settingsDoc.view_configs || {};
+        route_templates = settingsDoc.route_templates || [];
       }
     } catch (err) {}
 
     renderPageLayout({
       title: '管理總表',
-      subtitle: '所有工單的狀態與時間追蹤列表',
+      subtitle: '所有工單的狀態、時間與流程追蹤列表',
       headerActions: `
         <div class="flex items-center gap-2">
+          <button id="btn-new-route" class="bg-brand text-white border border-brand px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand-hover flex items-center gap-2 shadow-sm">
+            <i data-lucide="plus" class="w-4 h-4"></i> 快速新增流程
+          </button>
           <button id="btn-export-excel" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
             <i data-lucide="download" class="w-4 h-4"></i> Excel
           </button>
@@ -55,9 +60,30 @@ export default {
       this.updateUI();
     });
 
+    // 快速新增流程（不綁定特定工單）
+    document.getElementById('btn-new-route')?.addEventListener('click', () => {
+      window.dispatchEvent(new CustomEvent('open-route-builder', { 
+        detail: { orderId: null, defaultCategory: '' } 
+      }));
+    });
+
+    // 監聽工單資料
     window.addEventListener('refresh-table', this.updateUI.bind(this));
-    window.addEventListener('settings-updated', this.updateUI.bind(this));
-    createIcons({ icons: { Download, FileText }, attrs: { class: 'w-4 h-4' } });
+    
+    // 監聽系統設定（當新增流程或修改視圖配置時刷新）
+    window.addEventListener('settings-updated', async () => {
+      try {
+        const settingsDoc = await getDocument('settings', 'main');
+        if (settingsDoc) {
+          schema = settingsDoc.schema || [];
+          viewConfig = settingsDoc.view_configs || {};
+          route_templates = settingsDoc.route_templates || [];
+          this.updateUI();
+        }
+      } catch (err) {}
+    });
+
+    createIcons({ icons: { Download, FileText, Plus }, attrs: { class: 'w-4 h-4' } });
 
     this.initDataListener();
   },
@@ -83,10 +109,15 @@ export default {
     }
 
     // 依使用者設定的順序對齊欄位
-    const visibleFields = (viewConfig['table'] || []).map(key => {
+    let visibleFields = (viewConfig['table'] || []).map(key => {
       const field = schema.find(f => f.key === key);
       return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
+
+    // 強制插入「生產流程」欄位（若不存在）
+    if (!visibleFields.some(f => f.key === 'route_select')) {
+      visibleFields.unshift({ key: 'route_select', label: '生產流程', isVisible: true });
+    }
 
     renderOrderView({
       containerId: 'table-container',
@@ -94,6 +125,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'table',
+      route_templates: route_templates, // 傳入模板資料
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -130,8 +162,8 @@ export default {
   }
 };
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792926600
-W: UPGRADE-004
-═══ */
+V: 1792955000
+W: UPGRADE-005
+*/
