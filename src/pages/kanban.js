@@ -15,6 +15,7 @@ let currentStatus = '排產中';
 let currentCategory = 'ALL';
 let schema = [];
 let viewConfig = {};
+let route_templates = [];
 
 export default {
   async render() {
@@ -26,8 +27,17 @@ export default {
         schema = settingsDoc.schema || [];
         viewConfig = settingsDoc.view_configs || {};
         currentStatus = (settingsDoc.statuses && settingsDoc.statuses[0]) || '排產中';
+        route_templates = settingsDoc.route_templates || [];
       }
     } catch (err) {}
+
+    // 注入 CSS 隱藏齒輪按鈕（因為進度表不負責編輯流程，統一在管理總表）
+    if (!document.getElementById('kanban-hide-edit-route')) {
+      const style = document.createElement('style');
+      style.id = 'kanban-hide-edit-route';
+      style.innerHTML = `[data-action="edit-route"] { display: none !important; }`;
+      document.head.appendChild(style);
+    }
 
     renderPageLayout({
       title: '生產進度控制台',
@@ -111,6 +121,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'kanban',
+      route_templates: route_templates,
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -165,9 +176,19 @@ export default {
             const orderCategory = order.data.category || '其他';
             
             // 優先找類別相符的，再找通用預設 (category 為空)
-            let matchedTemplate = routeTemplates.find(t => t.category === orderCategory);
+            let matchedTemplate = routeTemplates.find(t => {
+              if (t.categories && t.categories.length > 0) {
+                return t.categories.includes(orderCategory);
+              }
+              // 相容舊資料格式
+              if (t.category) {
+                return t.category === orderCategory;
+              }
+              return false;
+            });
+            
             if (!matchedTemplate) {
-              matchedTemplate = routeTemplates.find(t => !t.category || t.category === '');
+              matchedTemplate = routeTemplates.find(t => !t.categories && !t.category);
             }
 
             // 若找到模板且不為空，套用模板；否則套用全站狀態
@@ -196,11 +217,15 @@ export default {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-kanban', this.updateUI.bind(this));
     window.removeEventListener('settings-updated', this.updateUI.bind(this));
+    
+    // 移除隱藏齒輪的 CSS
+    const style = document.getElementById('kanban-hide-edit-route');
+    if (style) style.remove();
   }
 };
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792926500
-W: UPGRADE-004
-═══ */
+V: 1792956000
+W: UPGRADE-005
+*/
