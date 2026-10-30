@@ -1,3 +1,4 @@
+~~~javascript
 import { AppState } from '../config/state.js';
 import { getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
@@ -100,16 +101,20 @@ export default {
 
         // 若資料庫完全沒有資料（全新專案），提供預設的 admin 帳號作為 Fallback
         if (usersList.length === 0) {
-          usersList = [{ username: "admin", password: "123456", role: "admin" }];
+          usersList = [{ username: "admin", password: "123456", role: "admin", allowedAreas: [] }];
         }
 
         // 比對帳密
         const user = usersList.find(u => u.username === usernameInput && u.password === passwordInput);
 
         if (user) {
-          // 登入成功
+          // 登入成功：將 allowedAreas 一併存入 AppState（供區域頁面權限過濾使用）
           showToast(`歡迎回來，${user.username}`, 'success');
-          AppState.setUser({ username: user.username, role: user.role });
+          AppState.setUser({
+            username: user.username,
+            role: user.role,
+            allowedAreas: Array.isArray(user.allowedAreas) ? user.allowedAreas : []
+          });
           
           // 觸發自訂事件，讓 router 接手後續畫面切換
           window.dispatchEvent(new CustomEvent('auth:login', { detail: user }));
@@ -136,6 +141,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/login.js
-V: 1792909602
-W: UPGRADE-002
+V: 1792936800
+W: UPGRADE-005
 ═══ */
