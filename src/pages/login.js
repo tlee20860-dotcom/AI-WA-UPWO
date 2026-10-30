@@ -1,4 +1,3 @@
-~~~javascript
 import { AppState } from '../config/state.js';
 import { getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
@@ -139,8 +138,8 @@ export default {
   }
 };
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/pages/login.js
-V: 1792936800
+V: 1792942400
 W: UPGRADE-005
 */
