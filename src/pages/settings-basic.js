@@ -256,7 +256,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
 
         <div class="flex flex-col gap-2 mt-4">
-          <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。</p>
+          <p class="text-sm text-slate-500">點擊左側加入右側，或長按左側把手拖曳調整順序。</p>
           <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
             <!-- 左側：可選工序 -->
             <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
@@ -344,12 +344,14 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           sortableInstance.destroy();
         }
 
-        // 綁定右側拖曳 (使用 SortableJS)
-        if (selectedList.children.length > 0 && !selectedList.querySelector('.text-slate-400')) {
+        // 綁定右側拖曳 (使用 SortableJS，加入 forceFallback 解決手機滾動衝突)
+        if (currentSteps.length > 0) {
           sortableInstance = new Sortable(selectedList, {
             animation: 150,
             handle: '.cursor-grab',
             ghostClass: 'opacity-50',
+            forceFallback: true,
+            fallbackTolerance: 3,
             onEnd: () => {
               currentSteps = Array.from(selectedList.children).map(el => el.dataset.step);
               renderModalLists(); // 重新渲染以更新序號
@@ -561,6 +563,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792947000
+V: 1792948800
 W: UPGRADE-005
 */
