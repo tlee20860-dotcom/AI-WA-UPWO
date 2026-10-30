@@ -124,8 +124,8 @@ export function initRouter() {
   handleRoute();
 }
 
-/* ═══ EOF ═══
+/* EOF
 F: AI-WA-UPWO/src/engine/router.js
 V: 1792935200
 W: UPGRADE-005
-═══ */
+*/
