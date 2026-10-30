@@ -1,3 +1,4 @@
+~~~javascript
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { getCollection } from '../db/read.js';
@@ -12,7 +13,7 @@ export function renderStatuses(container, currentSettings, saveSettings) {
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">工序狀態管理</h2>
-        <p class="text-sm text-slate-500 mt-1">可拖曳排序。修改名稱時會同步更新歷史工單。</p>
+        <p class="text-sm text-slate-500 mt-1">可拖曳排序。修改名稱時會同步更新歷史工單與區域綁定。</p>
       </div>
     </div>
     
@@ -67,6 +68,16 @@ export function renderStatuses(container, currentSettings, saveSettings) {
       try {
         const idx = currentSettings.statuses.indexOf(oldStatus);
         if (idx !== -1) currentSettings.statuses[idx] = trimmedNewStatus;
+
+        // 同步更新區域綁定中的工序名稱
+        if (Array.isArray(currentSettings.areas)) {
+          currentSettings.areas.forEach(area => {
+            if (Array.isArray(area.statuses)) {
+              area.statuses = area.statuses.map(s => s === oldStatus ? trimmedNewStatus : s);
+            }
+          });
+        }
+
         await saveSettings();
 
         const orders = await getCollection('work_orders');
@@ -90,7 +101,7 @@ export function renderStatuses(container, currentSettings, saveSettings) {
       const status = e.currentTarget.dataset.status;
       const confirmed = await openConfirm({
         title: '刪除狀態',
-        message: `確定要刪除「${status}」嗎？系統將檢查是否有工單處於此狀態。`,
+        message: `確定要刪除「${status}」嗎？系統將檢查是否有工單處於此狀態，並同步從區域綁定中移除。`,
         isDanger: true,
         confirmText: '檢查並刪除'
       });
@@ -104,6 +115,16 @@ export function renderStatuses(container, currentSettings, saveSettings) {
           return;
         }
         currentSettings.statuses = currentSettings.statuses.filter(s => s !== status);
+
+        // 同步從區域綁定中移除該工序
+        if (Array.isArray(currentSettings.areas)) {
+          currentSettings.areas.forEach(area => {
+            if (Array.isArray(area.statuses)) {
+              area.statuses = area.statuses.filter(s => s !== status);
+            }
+          });
+        }
+
         await saveSettings();
         showToast('刪除成功', 'success');
       } catch (err) {
@@ -558,6 +579,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792927200
-W: UPGRADE-004
+V: 1792936400
+W: UPGRADE-005
 ═══ */
