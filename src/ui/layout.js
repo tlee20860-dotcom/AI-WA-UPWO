@@ -299,8 +299,8 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
   });
 }
 
-/* ═══ EOF ═══
+/* EOF
 F: AI-WA-UPWO/src/ui/layout.js
 V: 1792935600
 W: UPGRADE-005
-═══ */
+*/
