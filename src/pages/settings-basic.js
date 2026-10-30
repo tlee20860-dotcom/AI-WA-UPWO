@@ -1,4 +1,3 @@
-~~~javascript
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { getCollection } from '../db/read.js';
@@ -577,8 +576,8 @@ export function renderMapping(container, currentSettings, saveSettings) {
   });
 }
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792936400
+V: 1792942000
 W: UPGRADE-005
 */
