@@ -577,8 +577,8 @@ export function renderMapping(container, currentSettings, saveSettings) {
   });
 }
 
-/* ═══ EOF ═══
+/* EOF
 F: AI-WA-UPWO/src/pages/settings-basic.js
 V: 1792936400
 W: UPGRADE-005
-═══ */
+*/
