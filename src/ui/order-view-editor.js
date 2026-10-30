@@ -1,9 +1,21 @@
-import { updateDocument } from '../db/write.js';
-import { getDocument } from '../db/read.js';
+import { updateDocument, setDocument } from '../db/write.js';
+import { getDocument, getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
+import { openRouteBuilder } from './route-builder.js';
 import { AppState } from '../config/state.js';
 import { createIcons, GripVertical, Plus, X } from 'lucide';
+
+/**
+ * 取得工單類別 (優先從 data.category，其次從工單號前兩碼)
+ */
+function getOrderCategory(order) {
+  if (order.data && order.data.category) {
+    return String(order.data.category).toUpperCase();
+  }
+  const match = String(order.id).match(/^[a-zA-Z]+/);
+  return match ? match[0].toUpperCase() : '其他';
+}
 
 /**
  * 處理行內編輯事件
@@ -31,6 +43,98 @@ window.addEventListener('inline-edit', async (e) => {
   } catch (error) {
     console.error('[Inline Edit Error]', error);
     showToast('更新失敗，請檢查網路或稍後再試', 'error');
+  }
+});
+
+/**
+ * 處理下拉選單切換生產流程事件
+ */
+window.addEventListener('change-route', async (e) => {
+  const { id, templateName } = e.detail;
+  if (!id || !templateName) return;
+
+  try {
+    const settings = await getDocument('settings', 'main');
+    const templates = settings.route_templates || [];
+    const template = templates.find(t => t.name === templateName);
+
+    if (!template) {
+      showToast('找不到該流程模板', 'error');
+      return;
+    }
+
+    const orderDoc = await getDocument('work_orders', id);
+    if (!orderDoc) return;
+
+    let newStatus = orderDoc.status;
+    // 如果新流程不包含當前狀態，則退回第一步
+    if (!template.steps.includes(newStatus)) {
+      newStatus = template.steps[0];
+    }
+
+    await updateDocument('work_orders', id, {
+      route: template.steps,
+      status: newStatus,
+      statusUpdateDate: new Date().toISOString()
+    });
+    
+    showToast(`已套用流程：${template.name}`, 'success');
+  } catch (err) {
+    console.error('[Change Route Error]', err);
+    showToast('套用失敗', 'error');
+  }
+});
+
+/**
+ * 處理開啟快速新增流程彈窗事件
+ */
+window.addEventListener('open-route-builder', async (e) => {
+  const { orderId, defaultCategory } = e.detail;
+  
+  try {
+    const settings = await getDocument('settings', 'main');
+    if (!settings) return;
+
+    // 獲取現有的所有類別 (掃描所有工單)
+    const allOrders = await getCollection('work_orders');
+    const categories = new Set();
+    allOrders.forEach(o => {
+      const cat = getOrderCategory(o);
+      if (cat !== '其他') categories.add(cat);
+    });
+
+    openRouteBuilder({
+      currentSettings: settings,
+      availableCategories: Array.from(categories),
+      defaultCategory: defaultCategory,
+      onSave: async (newTemplate) => {
+        // 1. 儲存新模板到 settings
+        const latestSettings = await getDocument('settings', 'main');
+        if (!latestSettings.route_templates) latestSettings.route_templates = [];
+        latestSettings.route_templates.push(newTemplate);
+        await setDocument('settings', 'main', latestSettings);
+
+        // 2. 套用到當前工單
+        if (orderId) {
+          await updateDocument('work_orders', orderId, {
+            route: newTemplate.steps,
+            status: newTemplate.steps[0],
+            statusUpdateDate: new Date().toISOString()
+          });
+          showToast('已新增並套用流程', 'success');
+        } else {
+          showToast('已新增流程', 'success');
+        }
+        
+        // 觸發刷新
+        window.dispatchEvent(new Event('settings-updated'));
+        const pageKey = window.location.hash.replace('#', '') || 'table';
+        window.dispatchEvent(new Event(`refresh-${pageKey}`));
+      }
+    });
+  } catch (err) {
+    console.error(err);
+    showToast('讀取資料失敗', 'error');
   }
 });
 
@@ -80,7 +184,7 @@ document.addEventListener('click', async (e) => {
     return;
   }
 
-  // 3. 點擊編輯製程 ⚙️
+  // 3. 點擊編輯製程 ⚙️ (保留給管理總表或特定頁面使用)
   const editRouteBtn = e.target.closest('button[data-action="edit-route"]');
   if (editRouteBtn) {
     const id = editRouteBtn.dataset.id;
@@ -108,7 +212,7 @@ document.addEventListener('click', async (e) => {
     }
 
     const templateOptions = routeTemplates.map((t, i) => {
-      const label = t.category ? `[${t.category}] ${t.name}` : `[通用] ${t.name}`;
+      const label = t.categories && t.categories.length > 0 ? `[${t.categories.join(',')}] ${t.name}` : `[通用] ${t.name}`;
       return `<option value="${i}">${label}</option>`;
     }).join('');
 
@@ -149,6 +253,7 @@ document.addEventListener('click', async (e) => {
     const { close, element } = openModal({ title: `編輯製程路線 (${id})`, content, footer });
     
     let currentSteps = Array.from(currentRoute);
+    let sortableInstance = null;
 
     const renderModalLists = () => {
       const availableList = element.querySelector('#modal-available-list');
@@ -173,8 +278,8 @@ document.addEventListener('click', async (e) => {
         selectedList.innerHTML = '<div class="text-slate-400 text-sm text-center py-4">請從左側加入工序</div>';
       } else {
         selectedList.innerHTML = currentSteps.map((step, idx) => `
-          <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 cursor-grab step-item" draggable="true" data-step="${step}">
-            <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300"></i>
+          <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-lg border border-slate-200 step-item" data-step="${step}">
+            <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 cursor-grab"></i>
             <span class="flex-1 font-medium text-slate-700"><span class="text-slate-400 mr-1">${idx + 1}.</span>${step}</span>
             <button class="text-slate-400 hover:text-rose-500 btn-remove-step" data-step="${step}">
               <i data-lucide="x" class="w-4 h-4"></i>
@@ -205,27 +310,21 @@ document.addEventListener('click', async (e) => {
         });
       });
 
-      // 綁定右側拖曳
-      let dragged = null;
-      selectedList.querySelectorAll('.step-item').forEach(item => {
-        item.addEventListener('dragstart', function() {
-          dragged = this;
-          setTimeout(() => this.classList.add('opacity-50'), 0);
+      // SortableJS 拖曳
+      if (sortableInstance) sortableInstance.destroy();
+      if (currentSteps.length > 0) {
+        sortableInstance = new Sortable(selectedList, {
+          animation: 150,
+          handle: '.cursor-grab',
+          ghostClass: 'opacity-50',
+          forceFallback: true,
+          fallbackTolerance: 3,
+          onEnd: () => {
+            currentSteps = Array.from(selectedList.children).map(el => el.dataset.step);
+            renderModalLists();
+          }
         });
-        item.addEventListener('dragend', function() {
-          this.classList.remove('opacity-50');
-          dragged = null;
-          currentSteps = Array.from(selectedList.querySelectorAll('.step-item')).map(el => el.dataset.step);
-          renderModalLists(); // 重新渲染以更新序號
-        });
-        item.addEventListener('dragover', function(ev) {
-          ev.preventDefault();
-          if (this === dragged) return;
-          const rect = this.getBoundingClientRect();
-          const next = (ev.clientY - rect.top) / (rect.bottom - rect.top) > 0.5;
-          selectedList.insertBefore(dragged, next ? this.nextSibling : this);
-        });
-      });
+      }
     };
 
     renderModalLists();
@@ -290,8 +389,8 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792927300
-W: UPGRADE-004
-═══ */
+V: 1792954000
+W: UPGRADE-005
+*/
