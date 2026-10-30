@@ -1,9 +1,10 @@
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database } from 'lucide';
+~~~javascript
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin } from 'lucide';
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
  * @param {Object} options
- * @param {Object} options.user 當前登入使用者 (需含 username, role)
+ * @param {Object} options.user 當前登入使用者 (需含 username, role, allowedAreas)
  * @param {function} options.onLogout 登出回呼
  * @param {function} options.onNavigate 切換視圖回呼 (接收 route)
  */
@@ -100,7 +101,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
 
   // 渲染圖示
   createIcons({
-    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database },
+    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin },
     attrs: { class: 'w-5 h-5' }
   });
 
@@ -131,19 +132,28 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
   overlay?.addEventListener('click', closeDrawer);
 
   // 渲染導覽選單
-  renderNavItems(user.role, onNavigate, closeDrawer);
+  renderNavItems(user, onNavigate, closeDrawer);
 }
 
 /**
  * 繪製導覽選單項目
+ * 依使用者 role 與 allowedAreas 過濾顯示
  */
-function renderNavItems(role, onNavigate, closeDrawer) {
+function renderNavItems(user, onNavigate, closeDrawer) {
+  const role = user.role;
+  const allowedAreas = Array.isArray(user.allowedAreas) ? user.allowedAreas : [];
+
+  // 是否顯示「生產區域」：admin 永遠顯示；user 若 allowedAreas 為空（向後相容）也顯示
+  // 若 user 明確指定 allowedAreas 但陣列為空，代表未被授權任何區域 → 隱藏選單
+  const showAreaMenu = role === 'admin' || allowedAreas.length > 0 || allowedAreas.length === 0;
+
   const routes = [
     { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'user'] },
     { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'user'] },
     { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'user'] },
     { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'user'] },
     { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'user'] },
+    { id: 'area', label: '生產區域', icon: 'map-pin', roles: ['admin', 'user'], visible: showAreaMenu },
     { id: 'settings', label: '系統設定', icon: 'settings', roles: ['admin'] },
     { id: 'admin-data', label: '資料總管', icon: 'database', roles: ['admin'] }
   ];
@@ -154,6 +164,7 @@ function renderNavItems(role, onNavigate, closeDrawer) {
 
   routes.forEach(route => {
     if (!route.roles.includes(role)) return;
+    if (route.visible === false) return;
 
     // 側邊欄項目
     if (sidebarNav) {
@@ -184,8 +195,8 @@ function renderNavItems(role, onNavigate, closeDrawer) {
       mobileNav.appendChild(btn);
     }
 
-    // 頂部 Segmented Control 項目 (排除 admin-data 以免太擠)
-    if (topControl && route.id !== 'admin-data') {
+    // 頂部 Segmented Control 項目 (排除 admin-data 與 area 以免太擠)
+    if (topControl && route.id !== 'admin-data' && route.id !== 'area') {
       const segment = document.createElement('div');
       segment.className = 'segment-btn';
       segment.dataset.route = route.id;
@@ -196,7 +207,7 @@ function renderNavItems(role, onNavigate, closeDrawer) {
   });
 
   createIcons({
-    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database },
+    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin },
     attrs: { class: 'w-5 h-5' }
   });
 }
@@ -290,6 +301,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792917900
-W: UPGRADE-003
+V: 1792935600
+W: UPGRADE-005
 ═══ */
