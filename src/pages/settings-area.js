@@ -1,4 +1,3 @@
-~~~javascript
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { createIcons, Plus, GripVertical, Trash2, Edit2, X, MapPin, AlertCircle } from 'lucide';
@@ -268,10 +267,9 @@ export function renderAreas(container, currentSettings, saveSettings) {
     });
   });
 }
-~~~
 
-/* EOF
+/*
 F: AI-WA-UPWO/src/pages/settings-area.js
-V: 1792934800
+V: 1792938000
 W: UPGRADE-005
 */
