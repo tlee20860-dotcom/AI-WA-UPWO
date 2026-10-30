@@ -1,4 +1,3 @@
-~~~javascript
 import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
 import { renderPageLayout } from '../ui/layout.js';
