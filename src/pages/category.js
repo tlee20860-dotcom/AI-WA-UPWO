@@ -90,6 +90,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'category',
+      isReadOnly: true, // 設定為唯讀
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -113,8 +114,8 @@ export default {
   }
 };
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/category.js
-V: 1792926700
-W: UPGRADE-004
-═══ */
+V: 1792963000
+W: UPGRADE-005
+*/
