@@ -30,9 +30,10 @@ const viewStates = {};
  * @param {boolean} options.isAdmin 是否為管理員
  * @param {string} options.pageKey 頁面識別碼
  * @param {Array} options.route_templates 所有的生產流程模板
+ * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏上下步與齒輪）
  * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -207,6 +208,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const val = getOrderValue(order, f.key);
             
             if (f.key === 'status') {
+              // 唯讀模式：只顯示文字
+              if (isReadOnly) {
+                return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
+              }
+
               let route = order.route && order.route.length > 0 ? order.route : allStatuses;
               let idx = route.indexOf(order.status);
               if (idx === -1) idx = 0;
@@ -317,6 +323,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               <tr class="hover:bg-slate-50/50 transition-colors">
                 ${displayFields.map(f => {
                   if (f.key === 'status') {
+                    // 唯讀模式：只顯示文字
+                    if (isReadOnly) {
+                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}</td>`;
+                    }
+
                     let route = order.route && order.route.length > 0 ? order.route : allStatuses;
                     let idx = route.indexOf(order.status);
                     if (idx === -1) idx = 0;
@@ -441,6 +452,6 @@ function getOrderCategory(order) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792953000
+V: 1792961000
 W: UPGRADE-005
 */
