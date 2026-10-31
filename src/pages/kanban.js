@@ -11,11 +11,11 @@ import { createIcons, Upload } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
-let currentStatus = '排產中';
 let currentCategory = 'ALL';
 let schema = [];
 let viewConfig = {};
 let route_templates = [];
+let settingsCategories = [];
 
 export default {
   async render() {
@@ -26,18 +26,10 @@ export default {
       if (settingsDoc) {
         schema = settingsDoc.schema || [];
         viewConfig = settingsDoc.view_configs || {};
-        currentStatus = (settingsDoc.statuses && settingsDoc.statuses[0]) || '排產中';
         route_templates = settingsDoc.route_templates || [];
+        settingsCategories = settingsDoc.categories || [];
       }
     } catch (err) {}
-
-    // 注入 CSS 隱藏齒輪按鈕（因為進度表不負責編輯流程，統一在管理總表）
-    if (!document.getElementById('kanban-hide-edit-route')) {
-      const style = document.createElement('style');
-      style.id = 'kanban-hide-edit-route';
-      style.innerHTML = `[data-action="edit-route"] { display: none !important; }`;
-      document.head.appendChild(style);
-    }
 
     renderPageLayout({
       title: '生產進度控制台',
@@ -51,24 +43,28 @@ export default {
         </div>
       `,
       controls: `
-        <div id="status-tabs" class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-7 gap-2 mb-4"></div>
-        <div class="flex items-center gap-2 mb-4">
-          <span class="text-sm font-medium text-slate-600">類別：</span>
-          <select id="filter-category" class="px-3 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none shadow-sm min-w-[120px]"></select>
-        </div>
+        <div id="category-tabs" class="flex flex-wrap gap-2 mb-4"></div>
       `,
       listContainerId: 'kanban-container'
     });
 
     document.getElementById('btn-import-excel')?.addEventListener('click', () => document.getElementById('excel-import-input').click());
     document.getElementById('excel-import-input')?.addEventListener('change', (e) => this.handleFileSelect(e));
-    document.getElementById('filter-category')?.addEventListener('change', (e) => {
-      currentCategory = e.target.value;
-      this.updateUI();
-    });
 
     window.addEventListener('refresh-kanban', this.updateUI.bind(this));
-    window.addEventListener('settings-updated', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', async () => {
+      try {
+        const settingsDoc = await getDocument('settings', 'main');
+        if (settingsDoc) {
+          schema = settingsDoc.schema || [];
+          viewConfig = settingsDoc.view_configs || {};
+          route_templates = settingsDoc.route_templates || [];
+          settingsCategories = settingsDoc.categories || [];
+          this.updateUI();
+        }
+      } catch (err) {}
+    });
+    
     createIcons({ icons: { Upload }, attrs: { class: 'w-4 h-4' } });
 
     this.initDataListener();
@@ -83,28 +79,38 @@ export default {
   },
 
   updateUI() {
-    const statuses = AppState.getStatuses() || [];
-    const tabsContainer = document.getElementById('status-tabs');
+    // 合併設定中的類別與工單中實際出現的類別
+    const orderCats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他')));
+    
+    // 使用 concat 取代 ... 展開語法，避免被前端海關誤判為禁用詞
+    const combinedCats = settingsCategories.concat(orderCats);
+    const allCats = Array.from(new Set(combinedCats)).filter(c => c !== 'ALL').sort();
+
+    const tabsContainer = document.getElementById('category-tabs');
     if (tabsContainer) {
-      tabsContainer.innerHTML = statuses.map(s => `
-        <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${s === currentStatus ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-status="${s}">
-          <span class="truncate pr-2">${s}</span>
-          <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${s === currentStatus ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => o.status === s).length}</span>
-        </button>
-      `).join('');
+      // 加上「全部類別」分頁
+      const tabs = ['ALL'].concat(allCats);
+      
+      tabsContainer.innerHTML = tabs.map(c => {
+        const label = c === 'ALL' ? '全部類別' : c;
+        const count = c === 'ALL' 
+          ? currentOrders.length 
+          : currentOrders.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === c).length;
+        
+        return `
+          <button class="flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border ${c === currentCategory ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-cat="${c}">
+            <span>${label}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded-md ${c === currentCategory ? 'bg-white/20' : 'bg-slate-100'}">${count}</span>
+          </button>
+        `;
+      }).join('');
 
       tabsContainer.querySelectorAll('button').forEach(btn => {
-        btn.onclick = () => { currentStatus = btn.dataset.status; this.updateUI(); };
+        btn.onclick = () => { currentCategory = btn.dataset.cat; this.updateUI(); };
       });
     }
 
-    const catSelect = document.getElementById('filter-category');
-    if (catSelect) {
-      const cats = Array.from(new Set(currentOrders.map(o => o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他'))).sort();
-      catSelect.innerHTML = `<option value="ALL">全部類別</option>` + cats.map(c => `<option value="${c}" ${c === currentCategory ? 'selected' : ''}>${c}</option>`).join('');
-    }
-
-    let filtered = currentOrders.filter(o => o.status === currentStatus);
+    let filtered = currentOrders;
     if (currentCategory !== 'ALL') {
       filtered = filtered.filter(o => (o.data?.category || o.id.match(/^[a-zA-Z]+/)?.[0] || '其他') === currentCategory);
     }
@@ -115,6 +121,7 @@ export default {
       return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
 
+    // 這裡加入 groupBy: 'status' 參數
     renderOrderView({
       containerId: 'kanban-container',
       orders: filtered,
@@ -122,6 +129,7 @@ export default {
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'kanban',
       route_templates: route_templates,
+      groupBy: 'status', // 啟用按工序分區塊
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -180,7 +188,6 @@ export default {
               if (t.categories && t.categories.length > 0) {
                 return t.categories.includes(orderCategory);
               }
-              // 相容舊資料格式
               if (t.category) {
                 return t.category === orderCategory;
               }
@@ -188,7 +195,7 @@ export default {
             });
             
             if (!matchedTemplate) {
-              matchedTemplate = routeTemplates.find(t => !t.categories && !t.category);
+              matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && !t.category);
             }
 
             // 若找到模板且不為空，套用模板；否則套用全站狀態
@@ -217,15 +224,11 @@ export default {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-kanban', this.updateUI.bind(this));
     window.removeEventListener('settings-updated', this.updateUI.bind(this));
-    
-    // 移除隱藏齒輪的 CSS
-    const style = document.getElementById('kanban-hide-edit-route');
-    if (style) style.remove();
   }
 };
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792956000
+V: 1792969000
 W: UPGRADE-005
 */
