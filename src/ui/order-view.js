@@ -41,11 +41,12 @@ const viewStates = {};
  * @param {boolean} options.isAdmin 是否為管理員
  * @param {string} options.pageKey 頁面識別碼
  * @param {Array} options.route_templates 所有的生產流程模板
- * @param {boolean} options.isReadOnly 是否為唯讀模式
+ * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏所有編輯）
+ * @param {boolean} options.allowStatusChange 是否允許更改狀態（生產員專用，只顯示上下步，隱藏其他編輯）
  * @param {string} options.groupBy 分組模式（例如：'status'，若為空則不分组）
  * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, groupBy = null, onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -205,7 +206,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
           }
           if (f.key === 'status') {
-            if (isReadOnly) {
+            // 若完全唯讀且不允許改狀態，顯示純文字
+            if (isReadOnly && !allowStatusChange) {
               return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
             }
 
@@ -217,6 +219,9 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const prevStep = isFirst ? '' : route[idx - 1];
             const nextStep = isLast ? '' : route[idx + 1];
             const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+
+            // 判斷是否顯示齒輪 (只有 !isReadOnly 且 !allowStatusChange 才顯示)
+            const showGear = !isReadOnly && !allowStatusChange;
 
             return `
               <div class="text-sm flex flex-col gap-1">
@@ -233,11 +238,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     <span class="truncate max-w-[60px]">${nextStep}</span>
                     <i data-lucide="chevron-right" class="w-4 h-4"></i>
                   </button>
+                  ${showGear ? `
                   <div class="w-px h-4 bg-slate-200 mx-1"></div>
                   <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
                     class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
                     <i data-lucide="settings" class="w-4 h-4"></i>
                   </button>
+                  ` : ''}
                 </div>
               </div>
             `;
@@ -273,7 +280,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          if (f.isEditable) {
+          // 判斷是否可編輯 (若允許改狀態但唯讀其他欄位，此處會被擋下)
+          if (f.isEditable && !isReadOnly && !allowStatusChange) {
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
             
@@ -321,7 +329,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
                   }
                   if (f.key === 'status') {
-                    if (isReadOnly) {
+                    if (isReadOnly && !allowStatusChange) {
                       return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}</td>`;
                     }
 
@@ -333,6 +341,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     const prevStep = isFirst ? '' : route[idx - 1];
                     const nextStep = isLast ? '' : route[idx + 1];
                     const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+                    const showGear = !isReadOnly && !allowStatusChange;
 
                     return `
                       <td class="px-4 py-3 whitespace-nowrap">
@@ -348,11 +357,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                             <span class="truncate max-w-[60px]">${nextStep}</span>
                             <i data-lucide="chevron-right" class="w-4 h-4"></i>
                           </button>
+                          ${showGear ? `
                           <div class="w-px h-4 bg-slate-200 mx-1"></div>
                           <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
                             class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
                             <i data-lucide="settings" class="w-4 h-4"></i>
                           </button>
+                          ` : ''}
                         </div>
                       </td>
                     `;
@@ -387,7 +398,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
                   
-                  if (f.isEditable) {
+                  if (f.isEditable && !isReadOnly && !allowStatusChange) {
                     const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
                     const displayVal = f.type === 'date' ? formatExcelDate(getOrderValue(order, f.key)) : getOrderValue(order, f.key);
                     
@@ -481,6 +492,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792970000
+V: 1792980000
 W: UPGRADE-005
 */
