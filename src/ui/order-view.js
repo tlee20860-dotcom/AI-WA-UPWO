@@ -41,12 +41,13 @@ const viewStates = {};
  * @param {boolean} options.isAdmin 是否為管理員
  * @param {string} options.pageKey 頁面識別碼
  * @param {Array} options.route_templates 所有的生產流程模板
- * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏所有編輯）
- * @param {boolean} options.allowStatusChange 是否允許更改狀態（生產員專用，只顯示上下步，隱藏其他編輯）
- * @param {string} options.groupBy 分組模式（例如：'status'，若為空則不分组）
+ * @param {Array} options.areas 所有的生產區域（用於顯示 area_name）
+ * @param {boolean} options.isReadOnly 是否為唯讀模式
+ * @param {boolean} options.allowStatusChange 是否允許更改狀態
+ * @param {string} options.groupBy 分組模式（例如：'status'）
  * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], areas = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -195,6 +196,25 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     return;
   }
 
+  // 輔助函數：取得工單所屬的區域名稱
+  const getOrderAreaName = (order) => {
+    const matchedAreas = areas.filter(a => (a.statuses || []).includes(order.status));
+    const orderCat = getOrderCategory(order);
+    
+    const validAreas = matchedAreas.filter(a => {
+      let areaCats = [];
+      if (Array.isArray(a.categories)) {
+        areaCats = a.categories.map(c => String(c).toUpperCase());
+      } else if (typeof a.category === 'string' && a.category.trim() !== '') {
+        areaCats = a.category.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+      }
+      return areaCats.length === 0 || areaCats.includes(orderCat);
+    });
+
+    if (validAreas.length === 0) return '-';
+    return validAreas.map(a => a.name).join(', ');
+  };
+
   // 輔助渲染函數：單一工單卡片
   const renderCard = (order) => {
     return `
@@ -205,8 +225,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
           if (f.key === 'id') {
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
           }
+          if (f.key === 'area_name') {
+            const areaName = getOrderAreaName(order);
+            return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${areaName}</span></div>`;
+          }
           if (f.key === 'status') {
-            // 若完全唯讀且不允許改狀態，顯示純文字
             if (isReadOnly && !allowStatusChange) {
               return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
             }
@@ -219,8 +242,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const prevStep = isFirst ? '' : route[idx - 1];
             const nextStep = isLast ? '' : route[idx + 1];
             const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
-
-            // 判斷是否顯示齒輪 (只有 !isReadOnly 且 !allowStatusChange 才顯示)
             const showGear = !isReadOnly && !allowStatusChange;
 
             return `
@@ -280,7 +301,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          // 判斷是否可編輯 (若允許改狀態但唯讀其他欄位，此處會被擋下)
           if (f.isEditable && !isReadOnly && !allowStatusChange) {
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
@@ -327,6 +347,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                   const val = getOrderValue(order, f.key);
                   if (f.key === 'id') {
                     return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
+                  }
+                  if (f.key === 'area_name') {
+                    const areaName = getOrderAreaName(order);
+                    return `<td class="px-4 py-3 whitespace-nowrap font-medium text-slate-600">${areaName}</td>`;
                   }
                   if (f.key === 'status') {
                     if (isReadOnly && !allowStatusChange) {
@@ -492,6 +516,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792980000
+V: 1792987000
 W: UPGRADE-005
 */
