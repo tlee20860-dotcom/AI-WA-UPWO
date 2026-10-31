@@ -90,7 +90,7 @@ export default {
           }
         }
 
-        // 自動補齊核心欄位與視圖配置
+        // 自動補齊核心欄位
         const requiredSysFields = [
           { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
           { key: 'uploadDate', label: '日期', type: 'date', isSystem: true, isEditable: false },
@@ -108,16 +108,7 @@ export default {
           }
         });
 
-        Object.keys(currentSettings.view_configs).forEach(page => {
-          if (!currentSettings.view_configs[page].includes('status')) {
-            currentSettings.view_configs[page].unshift('status');
-            needSave = true;
-          }
-          if (!currentSettings.view_configs[page].includes('dueDate') && page !== 'kanban') {
-            currentSettings.view_configs[page].push('dueDate');
-            needSave = true;
-          }
-        });
+        // 💡 已移除強制將 status 與 dueDate 加回視圖配置的邏輯，允許使用者自由刪減顯示欄位。
 
         if (!currentSettings.view_configs['overview']) {
           currentSettings.view_configs['overview'] = ['id', 'status', 'salesRep', 'dueDate'];
@@ -131,7 +122,7 @@ export default {
             needSave = true;
           }
           if ((t.category === '' || t.category === '通用') && (!t.steps || t.steps.length === 0)) {
-            t.steps = [...currentSettings.statuses];
+            t.steps = Array.from(currentSettings.statuses);
             needSave = true;
           }
         });
@@ -141,7 +132,7 @@ export default {
           currentSettings.route_templates.unshift({
             name: '預設常規路線',
             category: '',
-            steps: [...currentSettings.statuses]
+            steps: Array.from(currentSettings.statuses)
           });
           needSave = true;
         }
@@ -187,7 +178,7 @@ export default {
 
   getDefaultRouteTemplates(statuses = ['排產中', '印刷', '裁切', '品檢', '出貨']) {
     return [
-      { name: '預設常規路線', category: '', steps: [...statuses] }
+      { name: '預設常規路線', category: '', steps: Array.from(statuses) }
     ];
   },
 
@@ -641,6 +632,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792967000
+V: 1792973000
 W: UPGRADE-005
 */
