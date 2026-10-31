@@ -5,13 +5,13 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { groupByStatus, calculateStats, generatePivotTable } from '../domain/stats.js';
 import { createIcons, Inbox, PieChart, LayoutDashboard } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
 let schema = [];
 let viewConfig = {};
+let areas = [];
 
 export default {
   async render() {
@@ -22,12 +22,13 @@ export default {
       if (settingsDoc) {
         schema = settingsDoc.schema || [];
         viewConfig = settingsDoc.view_configs || {};
+        areas = settingsDoc.areas || [];
       }
     } catch (err) {}
 
     renderPageLayout({
       title: '總狀態視圖',
-      subtitle: '全廠工單狀態分佈與銷售員樞紐分析',
+      subtitle: '全廠區域狀態分佈與銷售員樞紐分析',
       headerActions: '',
       stats: [],
       controls: '',
@@ -35,6 +36,7 @@ export default {
     });
 
     window.addEventListener('refresh-overview', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', this.updateUI.bind(this));
 
     this.initDataListener();
   },
@@ -68,34 +70,65 @@ export default {
       return;
     }
 
-    const statuses = AppState.getStatuses() || [];
+    // 1. 建立「工序 -> 區域名稱」映射
+    const statusToAreaName = {};
+    areas.forEach(area => {
+      (area.statuses || []).forEach(s => {
+        statusToAreaName[s] = area.name;
+      });
+    });
 
-    // 1. 上半部：狀態 / 銷售員 樞紐分析
+    // 2. 取得所有要顯示的列（區域名稱）
+    let areaNames = areas.map(a => a.name);
+    // 若有不屬於任何區域的工序，加上「未分配區域」一列
+    const hasUnassigned = cleanOrders.some(o => !statusToAreaName[o.status]);
+    if (hasUnassigned) {
+      areaNames.push('未分配區域');
+    }
+
+    // 3. 取得所有銷售員作為欄
     const allRepsSet = new Set();
     cleanOrders.forEach(o => {
       (o.salesReps || ['未填寫']).forEach(r => allRepsSet.add(r));
     });
     const allReps = Array.from(allRepsSet).sort();
-    const pivotData = generatePivotTable(cleanOrders, statuses, allReps);
+
+    // 4. 生成樞紐分析資料 (區域 vs 銷售員)
+    const pivotData = {};
+    areaNames.forEach(areaName => {
+      pivotData[areaName] = {};
+      allReps.forEach(rep => { pivotData[areaName][rep] = 0; });
+    });
+
+    cleanOrders.forEach(order => {
+      const reps = order.salesReps || ['未填寫'];
+      const areaName = statusToAreaName[order.status] || '未分配區域';
+      
+      reps.forEach(rep => {
+        if (!pivotData[areaName]) pivotData[areaName] = {};
+        if (pivotData[areaName][rep] === undefined) pivotData[areaName][rep] = 0;
+        pivotData[areaName][rep]++;
+      });
+    });
 
     let pivotHtml = `
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden mb-6">
         <div class="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
           <i data-lucide="pie-chart" class="w-5 h-5 text-brand"></i>
-          <h2 class="font-bold text-slate-800">狀態 / 銷售員 樞紐分析</h2>
+          <h2 class="font-bold text-slate-800">區域 / 銷售員 樞紐分析</h2>
         </div>
         <div class="overflow-x-auto">
           <table class="w-full text-left border-collapse min-w-[600px]">
             <thead>
               <tr class="border-b border-slate-200/60 text-sm font-semibold text-slate-600 bg-slate-50/30">
-                <th class="px-6 py-3 sticky left-0 bg-white/90 backdrop-blur z-10">工序狀態</th>
+                <th class="px-6 py-3 sticky left-0 bg-white/90 backdrop-blur z-10">生產區域</th>
                 ${allReps.map(rep => `<th class="px-4 py-3 text-center whitespace-nowrap">${rep}</th>`).join('')}
                 <th class="px-6 py-3 text-center text-brand">總計</th>
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
-              ${statuses.map(status => {
-                const rowData = pivotData[status] || {};
+              ${areaNames.map(areaName => {
+                const rowData = pivotData[areaName] || {};
                 let rowTotal = 0;
                 
                 const cellsHtml = allReps.map(rep => {
@@ -106,7 +139,7 @@ export default {
 
                 return `
                   <tr class="hover:bg-slate-50/50 transition-colors">
-                    <td class="px-6 py-3 font-medium text-slate-700 sticky left-0 bg-white/90 backdrop-blur z-10">${status}</td>
+                    <td class="px-6 py-3 font-medium text-slate-700 sticky left-0 bg-white/90 backdrop-blur z-10">${areaName}</td>
                     ${cellsHtml}
                     <td class="px-6 py-3 text-center font-bold text-brand">${rowTotal}</td>
                   </tr>
@@ -118,7 +151,7 @@ export default {
       </div>
     `;
 
-    // 2. 下半部：工單動態列表 (使用 order-view)
+    // 下半部：工單動態列表 (使用 order-view)
     let listHtml = `
       <div class="flex items-center gap-2 mb-4 mt-8">
         <i data-lucide="layout-dashboard" class="w-5 h-5 text-brand"></i>
@@ -144,6 +177,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'overview',
+      isReadOnly: true, // 設定為唯讀
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -163,11 +197,12 @@ export default {
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-overview', this.updateUI.bind(this));
+    window.removeEventListener('settings-updated', this.updateUI.bind(this));
   }
 };
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/overview.js
-V: 1792920300
-W: UPGRADE-004
-═══ */
+V: 1792964000
+W: UPGRADE-005
+*/
