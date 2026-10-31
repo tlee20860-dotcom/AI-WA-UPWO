@@ -93,6 +93,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'salesperson',
+      isReadOnly: true, // 設定為唯讀
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -116,8 +117,8 @@ export default {
   }
 };
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792926800
-W: UPGRADE-004
-═══ */
+V: 1792962000
+W: UPGRADE-005
+*/
