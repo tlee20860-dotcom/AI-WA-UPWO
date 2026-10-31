@@ -59,7 +59,8 @@ export function openRouteBuilder({ currentSettings, availableCategories = [], de
     </div>
   `;
 
-  const { close, element } = openModal({ title: '新增生產流程', content, footer });
+  // 加入 size: 'max-w-4xl' 參數
+  const { close, element } = openModal({ title: '新增生產流程', content, footer, size: 'max-w-4xl' });
 
   let currentSteps = [];
   let sortableInstance = null;
@@ -158,8 +159,8 @@ export function openRouteBuilder({ currentSettings, availableCategories = [], de
     try {
       const newTemplate = {
         name,
-        category: selectedCategories.join(','), // 相容舊格式，或改用 categories 陣列。這裡先以字串儲存供顯示
-        categories: selectedCategories, // 新格式：陣列
+        category: selectedCategories.join(','),
+        categories: selectedCategories,
         steps: currentSteps
       };
 
@@ -176,6 +177,6 @@ export function openRouteBuilder({ currentSettings, availableCategories = [], de
 
 /*
 F: AI-WA-UPWO/src/ui/route-builder.js
-V: 1792952000
+V: 1792959000
 W: UPGRADE-005
 */
