@@ -12,9 +12,10 @@ import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users
 import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
 import { renderSchema, renderViewConfig } from './settings-schema.js';
 import { renderAreas } from './settings-area.js';
+import { renderCategories } from './settings-category.js';
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [] };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [], categories: [] };
 let activeTab = 'statuses';
 
 export default {
@@ -27,7 +28,7 @@ export default {
 
     renderPageLayout({
       title: '系統設定',
-      subtitle: '管理工序狀態、區域、銷售員對照表、系統欄位與帳號',
+      subtitle: '管理工序、類別、區域、銷售員對照表、系統欄位與帳號',
       headerActions: '',
       stats: [],
       controls: '',
@@ -49,7 +50,8 @@ export default {
           schema: data.schema || this.getDefaultSchema(),
           view_configs: data.view_configs || this.getDefaultViewConfigs(),
           route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中']),
-          areas: Array.isArray(data.areas) ? data.areas : []
+          areas: Array.isArray(data.areas) ? data.areas : [],
+          categories: Array.isArray(data.categories) ? data.categories : []
         };
 
         // 遷移：areas 不存在
@@ -64,6 +66,29 @@ export default {
             needSave = true;
           }
         });
+
+        // 遷移：如果 categories 是空的，掃描工單自動補齊
+        if (!Array.isArray(data.categories) || data.categories.length === 0) {
+          try {
+            const orders = await getCollection('work_orders');
+            const cats = new Set();
+            orders.forEach(o => {
+              let c = '';
+              if (o.data && o.data.category) c = String(o.data.category).toUpperCase();
+              else {
+                const match = String(o.id).match(/^[a-zA-Z]+/);
+                c = match ? match[0].toUpperCase() : '其他';
+              }
+              if (c && c !== '其他') cats.add(c);
+            });
+            if (cats.size > 0) {
+              currentSettings.categories = Array.from(cats).sort();
+              needSave = true;
+            }
+          } catch (e) {
+            console.warn('自動掃描類別失敗', e);
+          }
+        }
 
         // 自動補齊核心欄位與視圖配置
         const requiredSysFields = [
@@ -129,7 +154,8 @@ export default {
           schema: this.getDefaultSchema(),
           view_configs: this.getDefaultViewConfigs(),
           route_templates: this.getDefaultRouteTemplates(),
-          areas: []
+          areas: [],
+          categories: []
         };
         needSave = true;
       }
@@ -186,8 +212,11 @@ export default {
           <button class="tab-btn ${activeTab === 'statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="statuses">
             <i data-lucide="tag" class="w-4 h-4"></i> 狀態管理
           </button>
+          <button class="tab-btn ${activeTab === 'categories' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="categories">
+            <i data-lucide="layers" class="w-4 h-4"></i> 類別管理
+          </button>
           <button class="tab-btn ${activeTab === 'route_templates' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="route_templates">
-            <i data-lucide="layers" class="w-4 h-4"></i> 製程模板
+            <i data-lucide="git-branch" class="w-4 h-4"></i> 製程模板
           </button>
           <button class="tab-btn ${activeTab === 'areas' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="areas">
             <i data-lucide="map-pin" class="w-4 h-4"></i> 區域管理
@@ -247,6 +276,8 @@ export default {
     // 委派給拆分出去的模組
     if (activeTab === 'statuses') {
       renderStatuses(content, currentSettings, this.saveSettings.bind(this));
+    } else if (activeTab === 'categories') {
+      renderCategories(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'route_templates') {
       renderRouteTemplates(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'areas') {
@@ -610,6 +641,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792941600
+V: 1792967000
 W: UPGRADE-005
 */
