@@ -1,9 +1,6 @@
 import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
-import { updateDocument, deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
-import { showToast } from '../ui/toast.js';
-import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
 import { createIcons } from 'lucide';
 
@@ -15,7 +12,8 @@ let currentRep = '';
 
 export default {
   async render() {
-    if (!AppState.getUser()) return;
+    const user = AppState.getUser();
+    if (!user) return;
 
     try {
       const settingsDoc = await getDocument('settings', 'main');
@@ -45,39 +43,80 @@ export default {
     if (unsubscribe) unsubscribe();
     unsubscribe = listenCollection('work_orders', (orders) => {
       currentOrders = orders;
-      // 如果第一次載入，自動選中第一個銷售員
-      if (!currentRep) {
-        const reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
-        if (reps.length > 0) currentRep = reps[0];
+      
+      const user = AppState.getUser();
+      if (!user) return;
+      
+      const allowedSales = Array.isArray(user.allowedSales) ? user.allowedSales : [];
+      
+      // 提取所有銷售員
+      let reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
+      
+      // 權限過濾：銷售員只能看到被授權的銷售員分頁
+      if (user.role === 'sales') {
+        if (allowedSales.length > 0) {
+          reps = reps.filter(r => allowedSales.includes(r));
+        } else {
+          // 若未設定授權，預設可看全部（向後相容）
+        }
       }
-      this.updateUI();
+
+      // 如果第一次載入，自動選中第一個銷售員
+      if (!currentRep || !reps.includes(currentRep)) {
+        if (reps.length > 0) currentRep = reps[0];
+        else currentRep = '';
+      }
+      
+      this.updateUI(reps);
     });
   },
 
-  updateUI() {
-    // 提取所有銷售員
-    const reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
-    
-    // 若當前選中的銷售員不存在了，重置為第一個
-    if (reps.length > 0 && !reps.includes(currentRep)) {
-      currentRep = reps[0];
-    }
+  updateUI(preCalculatedReps = null) {
+    const user = AppState.getUser();
+    if (!user) return;
 
+    const allowedSales = Array.isArray(user.allowedSales) ? user.allowedSales : [];
+    
+    // 提取所有銷售員
+    let reps = preCalculatedReps;
+    if (!reps) {
+      reps = Array.from(new Set(currentOrders.flatMap(o => o.salesReps || ['未填寫']))).sort();
+      if (user.role === 'sales' && allowedSales.length > 0) {
+        reps = reps.filter(r => allowedSales.includes(r));
+      }
+    }
+    
     const tabsContainer = document.getElementById('rep-tabs');
     if (tabsContainer) {
-      tabsContainer.innerHTML = reps.map(r => `
-        <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${r === currentRep ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-rep="${r}">
-          <span class="truncate pr-2">${r}</span>
-          <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${r === currentRep ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(r)).length}</span>
-        </button>
-      `).join('');
+      if (reps.length === 0) {
+        tabsContainer.innerHTML = '<div class="text-slate-400 text-sm">無可見的銷售員資料</div>';
+      } else {
+        tabsContainer.innerHTML = reps.map(r => `
+          <button class="w-full flex justify-between items-center px-3 py-2 rounded-xl text-sm font-medium border ${r === currentRep ? 'bg-brand text-white border-brand' : 'bg-white text-slate-600 border-slate-200'}" data-rep="${r}">
+            <span class="truncate pr-2">${r}</span>
+            <span class="text-xs px-1.5 py-0.5 rounded-md flex-shrink-0 ${r === currentRep ? 'bg-white/20' : 'bg-slate-100'}">${currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(r)).length}</span>
+          </button>
+        `).join('');
 
-      tabsContainer.querySelectorAll('button').forEach(btn => {
-        btn.onclick = () => { currentRep = btn.dataset.rep; this.updateUI(); };
-      });
+        tabsContainer.querySelectorAll('button').forEach(btn => {
+          btn.onclick = () => { currentRep = btn.dataset.rep; this.updateUI(reps); };
+        });
+      }
     }
 
-    if (!currentRep) return;
+    if (!currentRep) {
+      const container = document.getElementById('salesperson-container');
+      if (container) {
+        container.innerHTML = `
+          <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft mt-4">
+            <i data-lucide="inbox" class="w-12 h-12 opacity-30"></i>
+            <span class="text-base font-medium">目前無銷售員資料</span>
+          </div>
+        `;
+        createIcons({ icons: {}, attrs: { class: 'w-4 h-4' } });
+      }
+      return;
+    }
 
     const filtered = currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(currentRep));
 
@@ -93,19 +132,9 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'salesperson',
-      isReadOnly: true, // 設定為唯讀
+      isReadOnly: true, // 設定為唯讀，銷售員不能修改
       onAction: async (action, id, newStatus) => {
-        if (action === 'delete') {
-          if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
-            await deleteDocument('work_orders', id);
-            showToast('已刪除', 'success');
-          }
-        } else if (action === 'status_change') {
-          if (newStatus) {
-            await updateDocument('work_orders', id, { status: newStatus, statusUpdateDate: new Date().toISOString() });
-            showToast('已更新生產進度', 'success');
-          }
-        }
+        // 唯讀模式下不會觸發這些
       }
     });
   },
@@ -119,6 +148,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792962000
+V: 1792984000
 W: UPGRADE-005
 */
