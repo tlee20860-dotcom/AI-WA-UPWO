@@ -6,17 +6,18 @@ import { createIcons, X } from 'lucide';
  * @param {string} options.title 標題
  * @param {string} options.content 內容 HTML
  * @param {string} options.footer 底部按鈕區 HTML（可選）
+ * @param {string} options.size 寬度設定（可選，預設為 max-w-md，可傳入 max-w-4xl 等）
  * @param {function} options.onClose 關閉時的回呼
  * @returns {Object} 包含 close 方法的物件，可手動關閉
  */
-export function openModal({ title, content, footer = '', onClose }) {
+export function openModal({ title, content, footer = '', size = 'max-w-md', onClose }) {
   // 建立遮罩與容器
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center transition-opacity duration-300 opacity-0 p-4';
   
   const modal = document.createElement('div');
-  // 使用 flex flex-col 與 max-h-[90vh] 確保內容不會撐破螢幕
-  modal.className = 'bg-white border border-slate-100 shadow-soft rounded-[20px] w-full max-w-md flex flex-col max-h-[90vh] transform transition-transform duration-300 scale-95 overflow-hidden';
+  // 使用 flex flex-col 與 max-h-[90vh] 確保內容不會撐破螢幕，並支援自訂寬度 size
+  modal.className = `bg-white border border-slate-100 shadow-soft rounded-[20px] w-full ${size} flex flex-col max-h-[90vh] transform transition-transform duration-300 scale-95 overflow-hidden`;
   
   modal.innerHTML = `
     <div class="flex justify-between items-center p-5 border-b border-slate-100 flex-shrink-0">
@@ -106,6 +107,7 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
       title,
       content,
       footer,
+      size: 'max-w-md',
       onClose: () => resolve(false) // 若透過右上角 X 或遮罩關閉，視為取消
     });
 
@@ -131,8 +133,8 @@ export function openConfirm({ title, message, confirmText = '確認', cancelText
   });
 }
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/ui/modal.js
-V: 1792927000
-W: UPGRADE-004
-═══ */
+V: 1792957000
+W: UPGRADE-005
+*/
