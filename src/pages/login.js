@@ -100,19 +100,20 @@ export default {
 
         // 若資料庫完全沒有資料（全新專案），提供預設的 admin 帳號作為 Fallback
         if (usersList.length === 0) {
-          usersList = [{ username: "admin", password: "123456", role: "admin", allowedAreas: [] }];
+          usersList = [{ username: "admin", password: "123456", role: "admin", allowedAreas: [], allowedSales: [] }];
         }
 
         // 比對帳密
         const user = usersList.find(u => u.username === usernameInput && u.password === passwordInput);
 
         if (user) {
-          // 登入成功：將 allowedAreas 一併存入 AppState（供區域頁面權限過濾使用）
+          // 登入成功：將 allowedAreas 與 allowedSales 一併存入 AppState
           showToast(`歡迎回來，${user.username}`, 'success');
           AppState.setUser({
             username: user.username,
             role: user.role,
-            allowedAreas: Array.isArray(user.allowedAreas) ? user.allowedAreas : []
+            allowedAreas: Array.isArray(user.allowedAreas) ? user.allowedAreas : [],
+            allowedSales: Array.isArray(user.allowedSales) ? user.allowedSales : []
           });
           
           // 觸發自訂事件，讓 router 接手後續畫面切換
@@ -140,6 +141,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/login.js
-V: 1792942400
+V: 1792986000
 W: UPGRADE-005
 */
