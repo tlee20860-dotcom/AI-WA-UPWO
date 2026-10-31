@@ -1,18 +1,21 @@
 import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
+import { setDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
-import { createIcons, Inbox, ChevronLeft, ChevronRight, MapPin, AlertCircle } from 'lucide';
+import { showToast } from '../ui/toast.js';
+import { createIcons, Inbox, ChevronLeft, ChevronRight, MapPin, AlertCircle, Activity } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
 let areas = [];
 let statuses = [];
-let userRole = 'user';
+let areaStatuses = [];
+let userRole = 'viewer';
 let userAllowedAreas = [];
 
 /**
  * 渲染單一工單 chip（工單號 + 上/下工序按鈕）
- * 按鈕事件由 order-view-editor.js 的全域委派處理（data-action="prev-step" / "next-step"）
+ * 按鈕事件由 order-view-editor.js 的全域委派處理
  */
 function renderOrderChip(order, allStatuses) {
   let route = order.route && order.route.length > 0 ? order.route : allStatuses;
@@ -53,7 +56,7 @@ function renderStatusBlock(status, orders, allStatuses) {
 }
 
 /**
- * 取得工單的類別 (優先從 data.category，其次從工單號前兩碼)
+ * 取得工單類別
  */
 function getOrderCategory(order) {
   if (order.data && order.data.category) {
@@ -71,13 +74,7 @@ export default {
     userRole = user.role;
     userAllowedAreas = Array.isArray(user.allowedAreas) ? user.allowedAreas : [];
 
-    try {
-      const settingsDoc = await getDocument('settings', 'main');
-      if (settingsDoc) {
-        areas = settingsDoc.areas || [];
-        statuses = settingsDoc.statuses || [];
-      }
-    } catch (err) {}
+    await this.loadSettings();
 
     renderPageLayout({
       title: '生產區域',
@@ -88,10 +85,61 @@ export default {
       listContainerId: 'area-container'
     });
 
-    window.addEventListener('settings-updated', this.updateUI.bind(this));
+    // 全域事件委派：處理區域狀態切換
+    document.addEventListener('change', async (e) => {
+      const select = e.target.closest('.area-status-select');
+      if (select) {
+        const areaId = select.dataset.areaId;
+        const newStatus = select.value;
+        
+        // 權限檢查
+        if (userRole !== 'admin' && userRole !== 'worker') return;
+
+        try {
+          const settingsDoc = await getDocument('settings', 'main');
+          if (!settingsDoc) return;
+          
+          const targetAreaIndex = (settingsDoc.areas || []).findIndex(a => a.id === areaId);
+          if (targetAreaIndex === -1) return;
+
+          // 生產員檢查是否在允許的狀態清單內
+          if (userRole === 'worker') {
+            const allowed = settingsDoc.areas[targetAreaIndex].allowedStatuses || [];
+            if (!allowed.includes(newStatus)) {
+              showToast('您沒有權限切換至該狀態', 'error');
+              return;
+            }
+          }
+
+          settingsDoc.areas[targetAreaIndex].currentStatus = newStatus;
+          await setDocument('settings', 'main', settingsDoc);
+          
+          showToast('區域狀態已更新', 'success');
+        } catch (err) {
+          console.error(err);
+          showToast('更新失敗', 'error');
+        }
+      }
+    });
+
+    window.addEventListener('settings-updated', async () => {
+      await this.loadSettings();
+      this.updateUI();
+    });
     window.addEventListener('refresh-area', this.updateUI.bind(this));
 
     this.initDataListener();
+  },
+
+  async loadSettings() {
+    try {
+      const settingsDoc = await getDocument('settings', 'main');
+      if (settingsDoc) {
+        areas = settingsDoc.areas || [];
+        statuses = settingsDoc.statuses || [];
+        areaStatuses = settingsDoc.areaStatuses || ['正常', '壞機', '休息中'];
+      }
+    } catch (err) {}
   },
 
   initDataListener() {
@@ -115,33 +163,34 @@ export default {
     });
 
     // 2. 建立「全域」工序 → 區域映射
-    // 因為一個工序可以綁定多個區域，所以值為 Array
-    const statusToAreaIds = {};
+    const statusToAreas = {};
     areas.forEach(area => {
       (area.statuses || []).forEach(s => {
-        if (!statusToAreaIds[s]) statusToAreaIds[s] = [];
-        statusToAreaIds[s].push(area.id);
+        if (!statusToAreas[s]) statusToAreas[s] = [];
+        statusToAreas[s].push(area);
       });
     });
 
     // 3. 權限過濾：決定「可見區域」
     let visibleAreas = areas;
     let showAllWarning = false;
-    if (userRole !== 'admin') {
+    if (userRole === 'worker') {
       if (userAllowedAreas.length > 0) {
         visibleAreas = areas.filter(a => userAllowedAreas.includes(a.id));
       } else {
-        // 空陣列 = 看到全部（向後相容），但提示管理員應配置
+        // 生產員且未設定授權，提示管理員
         showAllWarning = true;
       }
+    } else if (userRole === 'viewer') {
+      // 一般使用者看到全部，但沒有編輯權限（用 UI 隱藏處理）
     }
     const visibleAreaIds = new Set(visibleAreas.map(a => a.id));
 
-    // 4. 真正未綁定的工序 = allStatuses 中不在 statusToAreaIds 者
-    const unassignedStatuses = allStatuses.filter(s => !statusToAreaIds[s]);
+    // 4. 真正未綁定的工序
+    const unassignedStatuses = allStatuses.filter(s => !statusToAreas[s]);
 
-    // 5. 收集「未知工序」：工單 status 不在 allStatuses 也不在 statusToAreaIds
-    const knownStatuses = new Set([...allStatuses, ...Object.keys(statusToAreaIds)]);
+    // 5. 收集「未知工序」
+    const knownStatuses = new Set([...allStatuses, ...Object.keys(statusToAreas)]);
     const unknownStatuses = new Set();
     cleanOrders.forEach(o => {
       if (o.status && !knownStatuses.has(o.status)) {
@@ -163,37 +212,37 @@ export default {
       unassignedOrders[s] = [];
     });
 
-    const unknownOrders = {}; // key: 未知工序名稱或 '__EMPTY__'
+    const unknownOrders = {};
 
     // 7. 分派工單
     cleanOrders.forEach(order => {
       const status = order.status;
-      const areaIds = statusToAreaIds[status] || [];
       const orderCategory = getOrderCategory(order);
+      const matchedAreas = statusToAreas[status] || [];
+      
+      let isAssignedToAnyVisibleArea = false;
 
-      let isAssignedToAnyArea = false;
+      matchedAreas.forEach(area => {
+        if (!visibleAreaIds.has(area.id)) return;
 
-      // 檢查該工序所屬的所有區域
-      areaIds.forEach(areaId => {
-        isAssignedToAnyArea = true; // 標記此工序有被綁定到某個區域
+        // 相容類別檢查
+        let areaCats = [];
+        if (Array.isArray(area.categories)) {
+          areaCats = area.categories.map(c => String(c).toUpperCase());
+        } else if (typeof area.category === 'string' && area.category.trim() !== '') {
+          areaCats = area.category.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+        }
 
-        // 如果該區域不在當前使用者的可見範圍內，直接跳過
-        if (!visibleAreaIds.has(areaId)) return;
+        const isCategoryMatch = areaCats.length === 0 || areaCats.includes(orderCategory);
 
-        const area = areas.find(a => a.id === areaId);
-        if (!area) return;
-
-        // 類別過濾：若區域有設定類別，則必須與工單類別相符
-        const areaCategory = area.category ? String(area.category).toUpperCase() : '';
-        const categoryMatch = !areaCategory || areaCategory === orderCategory;
-
-        if (categoryMatch && ordersByArea[areaId] && ordersByArea[areaId][status]) {
-          ordersByArea[areaId][status].push(order);
+        if (isCategoryMatch && ordersByArea[area.id] && ordersByArea[area.id][status]) {
+          ordersByArea[area.id][status].push(order);
+          isAssignedToAnyVisibleArea = true;
         }
       });
 
-      // 如果該工序完全沒有被綁定到任何區域，則進入「未分配區域」
-      if (!isAssignedToAnyArea) {
+      // 若該工序完全沒有被綁定到任何區域（或未授權），則進入「未分配區域」
+      if (!isAssignedToAnyVisibleArea) {
         if (status && unassignedOrders[status]) {
           unassignedOrders[status].push(order);
         } else {
@@ -216,8 +265,7 @@ export default {
       `;
     }
 
-    // 非 admin 且沒有任何授權區域 → 空白提示
-    if (userRole !== 'admin' && userAllowedAreas.length > 0 && visibleAreas.length === 0) {
+    if (userRole === 'worker' && userAllowedAreas.length > 0 && visibleAreas.length === 0) {
       html += `
         <div class="flex flex-col items-center justify-center h-64 text-slate-400 gap-3 bg-white rounded-2xl border border-slate-100 shadow-soft">
           <i data-lucide="inbox" class="w-12 h-12 opacity-30"></i>
@@ -238,24 +286,46 @@ export default {
         renderStatusBlock(status, areaOrders[status] || [], allStatuses)
       ).join('');
 
-      const categoryLabel = area.category 
-        ? `<span class="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold">${area.category}</span>` 
+      // 類別標籤
+      const areaCats = Array.isArray(area.categories) ? area.categories : (area.category ? area.category.split(',') : []);
+      const categoryLabel = areaCats.length > 0 
+        ? areaCats.map(c => `<span class="text-[10px] px-2 py-0.5 bg-blue-50 text-blue-600 rounded font-bold">${c}</span>`).join('')
         : '';
+
+      // 狀態 Tag / 下拉選單
+      const allowedSts = area.allowedStatuses || [];
+      let statusHtml = '';
+      
+      if (userRole === 'admin' || (userRole === 'worker' && allowedSts.length > 0)) {
+        // 可編輯狀態
+        const options = (userRole === 'admin' ? areaStatuses : allowedSts)
+          .map(st => `<option value="${st}" ${area.currentStatus === st ? 'selected' : ''}>${st}</option>`).join('');
+        
+        statusHtml = `
+          <select class="area-status-select appearance-none bg-slate-100 border border-slate-200 text-xs font-bold text-slate-600 px-2 py-0.5 rounded cursor-pointer hover:bg-slate-200 transition-colors focus:outline-none focus:ring-2 focus:ring-brand/20 ml-auto" data-area-id="${area.id}">
+            ${options}
+          </select>
+        `;
+      } else {
+        // 唯讀顯示（一般使用者或無授權狀態的生產員）
+        statusHtml = `<span class="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded ml-auto">${area.currentStatus || '正常'}</span>`;
+      }
 
       return `
         <div class="glass-card p-4 flex flex-col gap-3">
-          <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap border-b border-slate-100 pb-2">
             <i data-lucide="map-pin" class="w-5 h-5 text-brand"></i>
             <h2 class="text-base font-bold text-slate-800">${area.name}</h2>
             ${categoryLabel}
-            <span class="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded font-medium ml-auto">${totalCount} 單</span>
+            <span class="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded font-medium">${totalCount} 單</span>
+            ${statusHtml}
           </div>
           ${totalCount === 0 ? `<div class="text-sm text-slate-400 py-2">暫無工單</div>` : statusBlocks}
         </div>
       `;
     }).join('');
 
-    // 8-2. 未分配區域（含真正未綁定 + 未知工序）
+    // 8-2. 未分配區域
     const unassignedBlocks = unassignedStatuses.map(status =>
       renderStatusBlock(status, unassignedOrders[status] || [], allStatuses)
     ).join('');
@@ -297,7 +367,7 @@ export default {
 
     container.innerHTML = html;
     createIcons({
-      icons: { Inbox, ChevronLeft, ChevronRight, MapPin, AlertCircle },
+      icons: { Inbox, ChevronLeft, ChevronRight, MapPin, AlertCircle, Activity },
       attrs: { class: 'w-4 h-4' }
     });
   },
@@ -314,6 +384,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/area.js
-V: 1792951000
+V: 1792983000
 W: UPGRADE-005
 */
