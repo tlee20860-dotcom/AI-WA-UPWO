@@ -13,6 +13,17 @@ let schema = [];
 let viewConfig = {};
 let areas = [];
 
+/**
+ * 取得工單類別
+ */
+function getOrderCategory(order) {
+  if (order.data && order.data.category) {
+    return String(order.data.category).toUpperCase();
+  }
+  const match = String(order.id).match(/^[a-zA-Z]+/);
+  return match ? match[0].toUpperCase() : '其他';
+}
+
 export default {
   async render() {
     if (!AppState.getUser()) return;
@@ -70,21 +81,20 @@ export default {
       return;
     }
 
-    // 1. 建立「工序 -> 區域名稱」映射
-    const statusToAreaName = {};
+    // 1. 建立「工序 -> 多個區域」映射
+    const statusToAreas = {};
     areas.forEach(area => {
       (area.statuses || []).forEach(s => {
-        statusToAreaName[s] = area.name;
+        if (!statusToAreas[s]) statusToAreas[s] = [];
+        statusToAreas[s].push(area);
       });
     });
 
     // 2. 取得所有要顯示的列（區域名稱）
-    let areaNames = areas.map(a => a.name);
-    // 若有不屬於任何區域的工序，加上「未分配區域」一列
-    const hasUnassigned = cleanOrders.some(o => !statusToAreaName[o.status]);
-    if (hasUnassigned) {
-      areaNames.push('未分配區域');
-    }
+    const areaNames = areas.map(a => a.name);
+    
+    // 檢查是否有未分配到任何區域的工單（包含工序未綁定或類別不符）
+    let hasUnassigned = false;
 
     // 3. 取得所有銷售員作為欄
     const allRepsSet = new Set();
@@ -102,14 +112,45 @@ export default {
 
     cleanOrders.forEach(order => {
       const reps = order.salesReps || ['未填寫'];
-      const areaName = statusToAreaName[order.status] || '未分配區域';
+      const orderCategory = getOrderCategory(order);
+      const orderStatus = order.status;
       
-      reps.forEach(rep => {
-        if (!pivotData[areaName]) pivotData[areaName] = {};
-        if (pivotData[areaName][rep] === undefined) pivotData[areaName][rep] = 0;
-        pivotData[areaName][rep]++;
+      const matchedAreas = statusToAreas[orderStatus] || [];
+      let isAssignedToAnyVisibleArea = false;
+
+      matchedAreas.forEach(area => {
+        // 檢查類別是否符合該區域
+        const areaCat = area.categories && area.categories.length > 0 ? area.categories : [];
+        const isCategoryMatch = areaCat.length === 0 || areaCat.includes(orderCategory);
+
+        if (isCategoryMatch) {
+          isAssignedToAnyVisibleArea = true;
+          if (!pivotData[area.name]) pivotData[area.name] = {};
+          
+          reps.forEach(rep => {
+            if (pivotData[area.name][rep] === undefined) pivotData[area.name][rep] = 0;
+            pivotData[area.name][rep]++;
+          });
+        }
       });
+
+      // 如果該工單不符合任何區域，標記為有未分配工單
+      if (!isAssignedToAnyVisibleArea) {
+        hasUnassigned = true;
+        const unassignedName = '未分配區域';
+        if (!pivotData[unassignedName]) {
+          pivotData[unassignedName] = {};
+          allReps.forEach(rep => { pivotData[unassignedName][rep] = 0; });
+        }
+        reps.forEach(rep => {
+          if (pivotData[unassignedName][rep] === undefined) pivotData[unassignedName][rep] = 0;
+          pivotData[unassignedName][rep]++;
+        });
+      }
     });
+
+    // 若「未分配區域」有資料，將其加入列名中
+    const finalAreaNames = areaNames.concat(hasUnassigned ? ['未分配區域'] : []);
 
     let pivotHtml = `
       <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden mb-6">
@@ -127,7 +168,7 @@ export default {
               </tr>
             </thead>
             <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
-              ${areaNames.map(areaName => {
+              ${finalAreaNames.map(areaName => {
                 const rowData = pivotData[areaName] || {};
                 let rowTotal = 0;
                 
@@ -177,7 +218,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'overview',
-      isReadOnly: true, // 設定為唯讀
+      isReadOnly: true,
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -203,6 +244,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/overview.js
-V: 1792964000
+V: 1792972000
 W: UPGRADE-005
 */
