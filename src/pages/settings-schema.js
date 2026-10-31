@@ -236,6 +236,13 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
     btn.addEventListener('click', async (e) => {
       e.stopPropagation(); // 防止觸發拖曳
       const key = btn.dataset.key;
+
+      // 💡 防呆：防止使用者移除「發票 (id)」欄位，否則工單號碼會消失，無法點擊開啟詳細資料
+      if (key === 'id') {
+        showToast('「發票」為系統主鍵，不可從視圖中移除', 'error');
+        return;
+      }
+
       currentSettings.view_configs[activeViewPage] = currentSettings.view_configs[activeViewPage].filter(k => k !== key);
       await saveSettings();
       showToast('已從顯示移除', 'success');
@@ -277,8 +284,8 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
   }
 }
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/pages/settings-schema.js
-V: 1792921400
-W: UPGRADE-004
-═══ */
+V: 1792974000
+W: UPGRADE-005
+*/
