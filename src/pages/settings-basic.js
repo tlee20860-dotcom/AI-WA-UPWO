@@ -6,7 +6,6 @@ import { createIcons, Plus, GripVertical, Trash2, Edit2, Star, Settings2, X, Che
 
 /**
  * 渲染狀態管理頁籤
- * 恢復為 SortableJS 拖曳排序（支援手機觸控）
  */
 export function renderStatuses(container, currentSettings, saveSettings) {
   container.innerHTML = `
@@ -279,7 +278,8 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
       `;
 
-      const { close, element } = openModal({ title: `編輯模板`, content, footer });
+      // 傳入 size: 'max-w-4xl'
+      const { close, element } = openModal({ title: `編輯模板`, content, footer, size: 'max-w-4xl' });
       
       let currentSteps = Array.from(tmpl.steps);
       let sortableInstance = null;
@@ -563,6 +563,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792948800
+V: 1792960000
 W: UPGRADE-005
 */
