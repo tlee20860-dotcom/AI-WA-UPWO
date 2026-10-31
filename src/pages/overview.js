@@ -119,9 +119,16 @@ export default {
       let isAssignedToAnyVisibleArea = false;
 
       matchedAreas.forEach(area => {
-        // 檢查類別是否符合該區域
-        const areaCat = area.categories && area.categories.length > 0 ? area.categories : [];
-        const isCategoryMatch = areaCat.length === 0 || areaCat.includes(orderCategory);
+        // 相容處理：檢查 area.categories（陣列）或 area.category（逗號分隔字串）
+        let areaCats = [];
+        if (Array.isArray(area.categories)) {
+          areaCats = area.categories.map(c => String(c).toUpperCase());
+        } else if (typeof area.category === 'string' && area.category.trim() !== '') {
+          areaCats = area.category.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
+        }
+
+        // 如果區域沒有設定類別，或者包含該工單的類別
+        const isCategoryMatch = areaCats.length === 0 || areaCats.includes(orderCategory);
 
         if (isCategoryMatch) {
           isAssignedToAnyVisibleArea = true;
@@ -244,6 +251,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/overview.js
-V: 1792972000
+V: 1792975000
 W: UPGRADE-005
 */
