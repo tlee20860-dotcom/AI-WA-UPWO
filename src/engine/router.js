@@ -44,22 +44,39 @@ function handleRoute() {
   } else {
     // 已登入卻試圖去登入頁
     if (hash === 'login') {
+      window.location.hash = user.role === 'worker' ? '#area' : (user.role === 'sales' ? '#salesperson' : '#kanban');
+      return;
+    }
+  }
+
+  // 2. 角色權限守衛
+  if (user) {
+    const role = user.role;
+
+    // 生產員 (worker)：只能進入生產區域
+    if (role === 'worker' && hash !== 'area') {
+      window.location.hash = '#area';
+      return;
+    }
+
+    // 銷售員 (sales)：只能進入銷售員視圖
+    if (role === 'sales' && hash !== 'salesperson') {
+      window.location.hash = '#salesperson';
+      return;
+    }
+
+    // 一般使用者 (viewer)：不能進入系統設定與資料總管
+    if (role === 'viewer' && (hash === 'settings' || hash === 'admin-data')) {
+      showToast('您沒有權限訪問此頁面', 'error');
       window.location.hash = '#kanban';
       return;
     }
   }
 
-  // 2. 權限守衛 (Settings 與 Admin-Data 僅限 admin)
-  if ((hash === 'settings' || hash === 'admin-data') && user && user.role !== 'admin') {
-    showToast('您沒有權限訪問此頁面', 'error');
-    window.location.hash = '#kanban';
-    return;
-  }
-
   // 3. 渲染頁面
   const PageClass = routes[hash];
   if (!PageClass) {
-    window.location.hash = user ? '#kanban' : '#login';
+    window.location.hash = user ? (user.role === 'worker' ? '#area' : (user.role === 'sales' ? '#salesperson' : '#kanban')) : '#login';
     return;
   }
 
@@ -100,7 +117,7 @@ function handleRoute() {
  * 處理登出
  */
 function handleLogout() {
-  AppState.clearUser(); // 假設 state.js 有這個方法
+  AppState.clearUser();
   isShellRendered = false;
   window.location.hash = '#login';
   showToast('已登出系統', 'info');
@@ -115,8 +132,14 @@ export function initRouter() {
 
   // 監聽登入事件 (由 login.js 觸發)
   window.addEventListener('auth:login', () => {
-    // 登入成功後，強制導向首頁
-    window.location.hash = '#kanban';
+    const user = AppState.getUser();
+    if (user.role === 'worker') {
+      window.location.hash = '#area';
+    } else if (user.role === 'sales') {
+      window.location.hash = '#salesperson';
+    } else {
+      window.location.hash = '#kanban';
+    }
   });
 
   // 首次載入
@@ -125,6 +148,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792938400
+V: 1792978000
 W: UPGRADE-005
 */
