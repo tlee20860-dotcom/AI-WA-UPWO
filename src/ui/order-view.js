@@ -18,6 +18,17 @@ export function formatExcelDate(val) {
   return String(val).trim();
 }
 
+/**
+ * 取得工單類別
+ */
+function getOrderCategory(order) {
+  if (order.data && order.data.category) {
+    return String(order.data.category).toUpperCase();
+  }
+  const match = String(order.id).match(/^[a-zA-Z]+/);
+  return match ? match[0].toUpperCase() : '其他';
+}
+
 // 全域狀態暫存，避免切換頁面時遺失
 const viewStates = {};
 
@@ -30,10 +41,11 @@ const viewStates = {};
  * @param {boolean} options.isAdmin 是否為管理員
  * @param {string} options.pageKey 頁面識別碼
  * @param {Array} options.route_templates 所有的生產流程模板
- * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏上下步與齒輪）
+ * @param {boolean} options.isReadOnly 是否為唯讀模式
+ * @param {string} options.groupBy 分組模式（例如：'status'，若為空則不分组）
  * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, groupBy = null, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -42,13 +54,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   }
   const state = viewStates[pageKey];
 
-  // 1. 資料清洗：過濾垃圾資料 (含 *** 或無單號)
+  // 1. 資料清洗
   let cleanOrders = orders.filter(o => {
     const id = String(o.id || '');
     return id && !id.includes('***') && !id.includes('訂單');
   });
 
-  // 2. 依配置提取顯示欄位 (若無配置，保底顯示 id 與 status)
+  // 2. 依配置提取顯示欄位
   let displayFields = visibleFields.filter(f => f.isVisible);
   if (displayFields.length === 0) {
     displayFields = [
@@ -57,11 +69,9 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     ];
   }
 
-  // 3. 全域事件委派 (確保全站按鈕絕不失效)
+  // 3. 全域事件委派
   if (!window._orderViewListenerAdded) {
-    // 點擊事件
     document.addEventListener('click', (e) => {
-      // 切換視圖
       const viewBtn = e.target.closest('[data-action="switch-view"]');
       if (viewBtn) {
         const key = viewBtn.dataset.pageKey;
@@ -72,7 +82,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         return;
       }
 
-      // 排序
       const th = e.target.closest('th[data-sort]');
       if (th) {
         const key = th.dataset.pageKey;
@@ -89,13 +98,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         return;
       }
       
-      // 動作按鈕 (刪除)
       const actionBtn = e.target.closest('[data-action="delete"]');
       if (actionBtn) {
         if (onAction) onAction('delete', actionBtn.dataset.id);
       }
 
-      // 快速新增流程
       const addRouteBtn = e.target.closest('[data-action="open-route-builder"]');
       if (addRouteBtn) {
         const id = addRouteBtn.dataset.id;
@@ -106,7 +113,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       }
     });
 
-    // 輸入事件 (全域搜尋)
     document.addEventListener('input', (e) => {
       const searchInput = e.target.closest('input[data-action="global-search"]');
       if (searchInput) {
@@ -118,30 +124,21 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       }
     });
 
-    // 改變事件 (行內編輯 & 下拉選單)
     document.addEventListener('change', (e) => {
-      // 行內編輯（日期或文字）
       const inlineInput = e.target.closest('input[data-action="inline-edit"]');
       if (inlineInput) {
         const id = inlineInput.dataset.id;
         const key = inlineInput.dataset.key;
         const value = inlineInput.value;
-        
-        // 拋出全域事件，由 order-view-editor.js 接手處理存檔
-        window.dispatchEvent(new CustomEvent('inline-edit', { 
-          detail: { id, key, value } 
-        }));
+        window.dispatchEvent(new CustomEvent('inline-edit', { detail: { id, key, value } }));
         return;
       }
 
-      // 切換生產流程下拉選單
       const routeSelect = e.target.closest('select[data-action="select-route"]');
       if (routeSelect) {
         const id = routeSelect.dataset.id;
         const templateName = routeSelect.value;
-        window.dispatchEvent(new CustomEvent('change-route', { 
-          detail: { id, templateName } 
-        }));
+        window.dispatchEvent(new CustomEvent('change-route', { detail: { id, templateName } }));
         return;
       }
     });
@@ -161,7 +158,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   const globalFilter = state.filters['__GLOBAL__'];
   if (globalFilter) {
     cleanOrders = cleanOrders.filter(o => {
-      // 檢查所有顯示欄位是否包含關鍵字
       return displayFields.some(f => {
         const val = String(getOrderValue(o, f.key) || '').toLowerCase();
         return val.includes(globalFilter);
@@ -198,115 +194,113 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     return;
   }
 
-  let contentHtml = '';
-  if (state.viewType === 'card') {
-    // 動態卡片
-    contentHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">` + 
-      cleanOrders.map(order => `
-        <div class="glass-card p-4 flex flex-col gap-2">
-          ${displayFields.map(f => {
-            const val = getOrderValue(order, f.key);
-            
-            if (f.key === 'status') {
-              // 唯讀模式：只顯示文字
-              if (isReadOnly) {
-                return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
+  // 輔助渲染函數：單一工單卡片
+  const renderCard = (order) => {
+    return `
+      <div class="glass-card p-4 flex flex-col gap-2">
+        ${displayFields.map(f => {
+          const val = getOrderValue(order, f.key);
+          
+          if (f.key === 'id') {
+            return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
+          }
+          if (f.key === 'status') {
+            if (isReadOnly) {
+              return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
+            }
+
+            let route = order.route && order.route.length > 0 ? order.route : allStatuses;
+            let idx = route.indexOf(order.status);
+            if (idx === -1) idx = 0;
+            const isFirst = idx <= 0;
+            const isLast = idx >= route.length - 1;
+            const prevStep = isFirst ? '' : route[idx - 1];
+            const nextStep = isLast ? '' : route[idx + 1];
+            const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+
+            return `
+              <div class="text-sm flex flex-col gap-1">
+                <span class="text-slate-400">${f.label}:</span>
+                <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit max-w-full">
+                  <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                    class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
+                    <i data-lucide="chevron-left" class="w-4 h-4"></i>
+                    <span class="truncate max-w-[60px]">${prevStep}</span>
+                  </button>
+                  <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center truncate max-w-[100px]">${order.status}</span>
+                  <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                    class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
+                    <span class="truncate max-w-[60px]">${nextStep}</span>
+                    <i data-lucide="chevron-right" class="w-4 h-4"></i>
+                  </button>
+                  <div class="w-px h-4 bg-slate-200 mx-1"></div>
+                  <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
+                    class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
+                    <i data-lucide="settings" class="w-4 h-4"></i>
+                  </button>
+                </div>
+              </div>
+            `;
+          }
+          
+          if (f.key === 'route_select') {
+            const orderCat = getOrderCategory(order);
+            const availableTemplates = (route_templates || []).filter(t => {
+              if (!t.categories || t.categories.length === 0) return true;
+              return t.categories.includes(orderCat);
+            });
+
+            let currentMatchName = '';
+            availableTemplates.forEach(t => {
+              if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
+                currentMatchName = t.name;
               }
+            });
 
-              let route = order.route && order.route.length > 0 ? order.route : allStatuses;
-              let idx = route.indexOf(order.status);
-              if (idx === -1) idx = 0;
-              const isFirst = idx <= 0;
-              const isLast = idx >= route.length - 1;
-              const prevStep = isFirst ? '' : route[idx - 1];
-              const nextStep = isLast ? '' : route[idx + 1];
-              const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
-
-              return `
-                <div class="text-sm flex flex-col gap-1">
-                  <span class="text-slate-400">${f.label}:</span>
-                  <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit max-w-full">
-                    <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                      class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
-                      <i data-lucide="chevron-left" class="w-4 h-4"></i>
-                      <span class="truncate max-w-[60px]">${prevStep}</span>
-                    </button>
-                    <span class="font-bold text-slate-700 text-sm px-1 min-w-[60px] text-center truncate max-w-[100px]">${order.status}</span>
-                    <button data-action="next-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                      class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isLast ? 'opacity-30 cursor-not-allowed' : ''}" ${isLast ? 'disabled' : ''}>
-                      <span class="truncate max-w-[60px]">${nextStep}</span>
-                      <i data-lucide="chevron-right" class="w-4 h-4"></i>
-                    </button>
-                    <div class="w-px h-4 bg-slate-200 mx-1"></div>
-                    <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                      class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
-                      <i data-lucide="settings" class="w-4 h-4"></i>
-                    </button>
-                  </div>
+            return `
+              <div class="text-sm flex flex-col gap-1">
+                <span class="text-slate-400">${f.label}:</span>
+                <div class="flex items-center gap-2">
+                  <select data-action="select-route" data-id="${order.id}" class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
+                    <option value="">(自訂流程)</option>
+                    ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
+                  <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
+                    <i data-lucide="plus" class="w-4 h-4"></i>
+                  </button>
                 </div>
-              `;
-            }
+              </div>
+            `;
+          }
+
+          if (f.isEditable) {
+            const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
+            const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
             
-            // 處理生產流程下拉選單
-            if (f.key === 'route_select') {
-              const orderCat = getOrderCategory(order);
-              // 過濾出符合該工單類別的模板（或無類別限制的通用模板）
-              const availableTemplates = (route_templates || []).filter(t => {
-                if (!t.categories || t.categories.length === 0) return true;
-                return t.categories.includes(orderCat);
-              });
+            return `
+              <div class="text-sm flex flex-col gap-1">
+                <span class="text-slate-400">${f.label}:</span>
+                <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
+                  class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors">
+              </div>
+            `;
+          }
+          
+          return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
+        }).join('')}
+        ${isAdmin ? `
+          <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
+            <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
+          </div>
+        ` : ''}
+      </div>
+    `;
+  };
 
-              // 尋找目前吻合的模板
-              let currentMatchName = '';
-              availableTemplates.forEach(t => {
-                if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
-                  currentMatchName = t.name;
-                }
-              });
-
-              return `
-                <div class="text-sm flex flex-col gap-1">
-                  <span class="text-slate-400">${f.label}:</span>
-                  <div class="flex items-center gap-2">
-                    <select data-action="select-route" data-id="${order.id}" class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
-                      <option value="">(自訂流程)</option>
-                      ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
-                    </select>
-                    <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
-                      <i data-lucide="plus" class="w-4 h-4"></i>
-                    </button>
-                  </div>
-                </div>
-              `;
-            }
-
-            // 判斷是否可編輯
-            if (f.isEditable) {
-              const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
-              const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
-              
-              return `
-                <div class="text-sm flex flex-col gap-1">
-                  <span class="text-slate-400">${f.label}:</span>
-                  <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
-                    class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors">
-                </div>
-              `;
-            }
-            
-            return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
-          }).join('')}
-          ${isAdmin ? `
-            <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
-              <button data-action="delete" data-id="${order.id}" class="text-xs text-rose-500 hover:bg-rose-50 px-2 py-1 rounded">刪除</button>
-            </div>
-          ` : ''}
-        </div>
-      `).join('') + `</div>`;
-  } else {
-    // 動態表格
-    contentHtml = `
-      <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-x-auto w-full">
+  // 輔助渲染函數：工單表格
+  const renderTable = (orderList) => {
+    return `
+      <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-x-auto w-full mb-4">
         <table class="w-full text-left border-collapse min-w-full">
           <thead class="sticky top-0 bg-slate-50 z-10 shadow-sm">
             <tr class="border-b border-slate-200/60 text-sm font-semibold text-slate-600">
@@ -319,11 +313,14 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             </tr>
           </thead>
           <tbody class="divide-y divide-slate-100 text-sm text-slate-700">
-            ${cleanOrders.map(order => `
+            ${orderList.map(order => `
               <tr class="hover:bg-slate-50/50 transition-colors">
                 ${displayFields.map(f => {
+                  const val = getOrderValue(order, f.key);
+                  if (f.key === 'id') {
+                    return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
+                  }
                   if (f.key === 'status') {
-                    // 唯讀模式：只顯示文字
                     if (isReadOnly) {
                       return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}</td>`;
                     }
@@ -361,7 +358,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
 
-                  // 處理生產流程下拉選單 (表格模式)
                   if (f.key === 'route_select') {
                     const orderCat = getOrderCategory(order);
                     const availableTemplates = (route_templates || []).filter(t => {
@@ -391,7 +387,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
                   
-                  // 判斷是否可編輯
                   if (f.isEditable) {
                     const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
                     const displayVal = f.type === 'date' ? formatExcelDate(getOrderValue(order, f.key)) : getOrderValue(order, f.key);
@@ -404,7 +399,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
                   
-                  return `<td class="px-4 py-3 whitespace-nowrap">${getOrderValue(order, f.key) || '-'}</td>`;
+                  return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}</td>`;
                 }).join('')}
                 ${isAdmin ? `
                   <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -417,6 +412,51 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         </table>
       </div>
     `;
+  };
+
+  let contentHtml = '';
+
+  if (groupBy === 'status') {
+    // 按工序分組渲染
+    const statuses = AppState.getStatuses() || [];
+    const grouped = {};
+    statuses.forEach(s => grouped[s] = []);
+    
+    cleanOrders.forEach(o => {
+      const s = o.status || '未知狀態';
+      if (!grouped[s]) grouped[s] = [];
+      grouped[s].push(o);
+    });
+
+    contentHtml = Object.keys(grouped).map(status => {
+      const groupOrders = grouped[status];
+      if (groupOrders.length === 0) return '';
+      
+      let listHtml = '';
+      if (state.viewType === 'card') {
+        listHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-2">${groupOrders.map(o => renderCard(o)).join('')}</div>`;
+      } else {
+        listHtml = renderTable(groupOrders);
+      }
+
+      return `
+        <div class="mb-8 p-4 bg-white/50 border border-slate-200/60 rounded-[20px] shadow-sm">
+          <div class="flex items-center gap-2 mb-3 ml-2">
+            <h3 class="text-lg font-bold text-slate-800">${status}</h3>
+            <span class="text-xs px-2 py-0.5 bg-brand/10 text-brand rounded-full font-bold">${groupOrders.length} 單</span>
+          </div>
+          ${listHtml}
+        </div>
+      `;
+    }).join('');
+
+  } else {
+    // 不分組，原本的全局渲染
+    if (state.viewType === 'card') {
+      contentHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">${cleanOrders.map(o => renderCard(o)).join('')}</div>`;
+    } else {
+      contentHtml = renderTable(cleanOrders);
+    }
   }
 
   container.innerHTML = viewToggleHtml + contentHtml;
@@ -439,19 +479,8 @@ function getOrderValue(order, key) {
   return order[key] !== undefined ? order[key] : '';
 }
 
-/**
- * 取得工單類別
- */
-function getOrderCategory(order) {
-  if (order.data && order.data.category) {
-    return String(order.data.category).toUpperCase();
-  }
-  const match = String(order.id).match(/^[a-zA-Z]+/);
-  return match ? match[0].toUpperCase() : '其他';
-}
-
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792961000
+V: 1792970000
 W: UPGRADE-005
 */
