@@ -5,28 +5,30 @@ import { createIcons, Plus, Trash2, Edit2, X, MapPin, GripVertical } from 'lucid
 /**
  * 渲染「區域管理」頁籤
  * - 新增／改名／刪除區域
- * - 區域支援綁定「負責類別」(category)
+ * - 區域支援綁定「負責類別」(categories) 與「允許狀態」(allowedStatuses)
  * - 拖曳排序區域（使用 SortableJS 支援手機觸控）
  * - 雙清單拖曳綁定工序（工序可重複綁定於多個區域）
  *
  * @param {HTMLElement} container 目標容器
- * @param {Object} currentSettings settings/main 的內容（含 areas、statuses）
+ * @param {Object} currentSettings settings/main 的內容（含 areas、statuses、categories、areaStatuses）
  * @param {Function} saveSettings 儲存回呼（async）
  */
 export function renderAreas(container, currentSettings, saveSettings) {
   const areas = currentSettings.areas || [];
   const statuses = currentSettings.statuses || [];
+  const categories = currentSettings.categories || [];
+  const areaStatuses = currentSettings.areaStatuses || ['正常', '壞機', '休息中'];
 
   container.innerHTML = `
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">區域管理</h2>
-        <p class="text-sm text-slate-500 mt-1">可拖曳排序。綁定負責類別與工序，若無設定類別則顯示全部。</p>
+        <p class="text-sm text-slate-500 mt-1">可拖曳排序。綁定負責類別、工序與允許切換的狀態。</p>
       </div>
     </div>
 
     <div class="flex gap-2 mb-6">
-      <input type="text" id="new-area-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand" placeholder="區域名稱 (例如：UG印刷區)">
+      <input type="text" id="new-area-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand/20 focus:border-brand" placeholder="區域名稱 (例如：四色印刷機)">
       <button id="btn-add-area" class="btn-primary px-4 py-2.5 text-sm flex items-center gap-2">
         <i data-lucide="plus" class="w-4 h-4"></i> 新增區域
       </button>
@@ -36,15 +38,17 @@ export function renderAreas(container, currentSettings, saveSettings) {
       ${areas.length === 0 ? '<div class="text-slate-400 text-sm py-4 text-center">尚無區域，請先新增</div>' : ''}
       ${areas.map((area, index) => {
         const boundStatuses = area.statuses || [];
+        const areaCats = Array.isArray(area.categories) ? area.categories : (area.category ? area.category.split(',').map(c=>c.trim()) : []);
+        
         return `
           <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm area-item" data-index="${index}">
             <div class="flex items-center justify-between mb-3">
-              <div class="flex items-center gap-2">
+              <div class="flex items-center gap-2 flex-wrap">
                 <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
                 <i data-lucide="map-pin" class="w-5 h-5 text-brand"></i>
                 <span class="font-bold text-slate-800 area-name">${area.name}</span>
-                ${area.category 
-                  ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded">類別：${area.category}</span>` 
+                ${areaCats.length > 0 
+                  ? areaCats.map(c => `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded">類別：${c}</span>`).join('') 
                   : `<span class="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">不分類別</span>`
                 }
                 <span class="text-xs px-2 py-0.5 bg-slate-100 text-slate-500 rounded">${boundStatuses.length} 個工序</span>
@@ -106,7 +110,7 @@ export function renderAreas(container, currentSettings, saveSettings) {
     }
     const id = 'area_' + Date.now().toString(36);
     if (!currentSettings.areas) currentSettings.areas = [];
-    currentSettings.areas.push({ id, name, category: '', statuses: [] });
+    currentSettings.areas.push({ id, name, categories: [], allowedStatuses: [], statuses: [], currentStatus: '' });
     await saveSettings();
     showToast('區域已新增', 'success');
   });
@@ -129,25 +133,52 @@ export function renderAreas(container, currentSettings, saveSettings) {
     });
   });
 
-  // ── 編輯區域（改名 + 類別 + 雙清單綁定工序） ──
+  // ── 編輯區域（改名 + 類別 + 狀態 + 雙清單綁定工序） ──
   document.querySelectorAll('.btn-edit-area').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.dataset.index);
       const area = areas[idx];
+      const areaCats = Array.isArray(area.categories) ? area.categories : (area.category ? area.category.split(',').map(c=>c.trim()) : []);
+      const allowedSts = area.allowedStatuses || [];
 
       const content = `
         <div class="flex flex-col gap-4">
-          <div class="flex flex-col gap-1">
-            <label class="text-sm font-medium text-slate-700">區域名稱</label>
-            <input type="text" id="edit-area-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${area.name}">
+          <div class="flex flex-col md:flex-row gap-4">
+            <div class="flex-1 flex flex-col gap-1">
+              <label class="text-sm font-medium text-slate-700">區域名稱</label>
+              <input type="text" id="edit-area-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${area.name}">
+            </div>
           </div>
+          
           <div class="flex flex-col gap-1">
-            <label class="text-sm font-medium text-slate-700">負責類別 (留空為通用)</label>
-            <input type="text" id="edit-area-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${area.category || ''}" placeholder="例：UG">
+            <label class="text-sm font-medium text-slate-700">負責類別 (可多選，留空為通用)</label>
+            <div class="flex flex-wrap gap-2">
+              ${categories.length === 0 ? '<span class="text-xs text-slate-400">尚未建立任何類別</span>' : ''}
+              ${categories.map(c => `
+                <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+                  <input type="checkbox" class="edit-area-cat-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${c}" ${areaCats.includes(c) ? 'checked' : ''}>
+                  <span class="text-slate-700">${c}</span>
+                </label>
+              `).join('')}
+            </div>
           </div>
+
+          <div class="flex flex-col gap-1">
+            <label class="text-sm font-medium text-slate-700">允許切換的區域狀態 (可多選)</label>
+            <div class="flex flex-wrap gap-2">
+              ${areaStatuses.length === 0 ? '<span class="text-xs text-slate-400">尚未建立區域狀態</span>' : ''}
+              ${areaStatuses.map(st => `
+                <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+                  <input type="checkbox" class="edit-area-status-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${st}" ${allowedSts.includes(st) ? 'checked' : ''}>
+                  <span class="text-slate-700">${st}</span>
+                </label>
+              `).join('')}
+            </div>
+          </div>
+
           <div class="flex flex-col gap-2 mt-2">
-            <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。同一工序可加入多個區域。</p>
-            <div class="flex flex-col md:flex-row gap-4 h-[40vh]">
+            <p class="text-sm text-slate-500">點擊左側加入右側，或拖曳右側調整順序。已綁定至其他區域的工序需先從該區域移除。</p>
+            <div class="flex flex-col md:flex-row gap-4 h-[35vh]">
               <!-- 左側：可選工序 -->
               <div class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 flex flex-col">
                 <h4 class="font-bold text-sm text-slate-700 mb-2">可選工序</h4>
@@ -170,7 +201,7 @@ export function renderAreas(container, currentSettings, saveSettings) {
         </div>
       `;
 
-      const { close, element } = openModal({ title: `編輯區域`, content, footer });
+      const { close, element } = openModal({ title: `編輯區域`, content, footer, size: 'max-w-4xl' });
 
       let currentSteps = Array.from(area.statuses || []);
       let sortableInstance = null;
@@ -256,8 +287,6 @@ export function renderAreas(container, currentSettings, saveSettings) {
 
       element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
         const newName = element.querySelector('#edit-area-name').value.trim();
-        const newCategory = element.querySelector('#edit-area-category').value.trim().toUpperCase();
-        
         if (!newName) {
           showToast('區域名稱不能為空', 'error');
           return;
@@ -267,9 +296,18 @@ export function renderAreas(container, currentSettings, saveSettings) {
           return;
         }
 
+        const newCats = Array.from(element.querySelectorAll('.edit-area-cat-checkbox:checked')).map(cb => cb.value);
+        const newAllowedSts = Array.from(element.querySelectorAll('.edit-area-status-checkbox:checked')).map(cb => cb.value);
+
         currentSettings.areas[idx].name = newName;
-        currentSettings.areas[idx].category = newCategory;
+        currentSettings.areas[idx].categories = newCats;
+        currentSettings.areas[idx].allowedStatuses = newAllowedSts;
         currentSettings.areas[idx].statuses = currentSteps;
+        
+        // 確保有 currentStatus 欄位，若無則預設為第一個允許的狀態
+        if (!currentSettings.areas[idx].currentStatus) {
+          currentSettings.areas[idx].currentStatus = newAllowedSts.length > 0 ? newAllowedSts[0] : '';
+        }
 
         await saveSettings();
         showToast('區域已更新', 'success');
@@ -281,6 +319,6 @@ export function renderAreas(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-area.js
-V: 1792950000
+V: 1792982000
 W: UPGRADE-005
 */
