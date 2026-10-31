@@ -1,4 +1,4 @@
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin } from 'lucide';
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu } from 'lucide';
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
@@ -11,18 +11,24 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
   const root = document.getElementById('app-root');
   if (!root) return;
 
+  // 檢查是否折疊 (從 localStorage 讀取)
+  const isCollapsed = localStorage.getItem('sidebar_collapsed') === 'true';
+
   // 清空並建立新的骨架
   root.innerHTML = `
     <div class="flex h-screen w-full bg-bg overflow-hidden">
       <!-- 側邊欄 (Desktop) -->
-      <aside class="w-64 bg-white border-r border-slate-200/50 flex-col hidden md:flex z-20">
-        <div class="h-16 flex items-center px-6 border-b border-slate-100">
-          <div class="flex items-center gap-3">
+      <aside id="desktop-sidebar" class="w-64 bg-white border-r border-slate-200/50 flex-col hidden md:flex z-20 ${isCollapsed ? 'md:hidden' : ''}">
+        <div class="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+          <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm shadow-brand/30">
               <i data-lucide="layers" class="w-5 h-5"></i>
             </div>
             <span class="font-bold text-lg tracking-tight text-slate-900">UPGRADE-WO</span>
           </div>
+          <button id="btn-collapse-sidebar" class="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors" title="收起側邊欄">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-panel-left-close"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg>
+          </button>
         </div>
         
         <nav class="flex-1 py-4 px-3 flex flex-col gap-1 overflow-y-auto" id="sidebar-nav">
@@ -41,15 +47,23 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
       <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         <!-- 頂部導覽 (Mobile & Desktop) -->
         <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-6 z-10">
-          <!-- Mobile Logo & Menu Button -->
-          <div class="flex items-center gap-3 md:hidden">
-            <button id="btn-mobile-menu" class="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
-              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+          <!-- 左側：選單按鈕與 Logo -->
+          <div class="flex items-center gap-3">
+            <!-- 桌面版展開側欄按鈕 (僅在收合時顯示) -->
+            <button id="btn-expand-sidebar" class="hidden md:block p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors ${isCollapsed ? '' : 'md:hidden'}" title="展開側邊欄">
+              <i data-lucide="menu" class="w-5 h-5"></i>
             </button>
-            <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm">
-              <i data-lucide="layers" class="w-5 h-5"></i>
+
+            <!-- Mobile Logo & Menu Button -->
+            <div class="flex items-center gap-3 md:hidden">
+              <button id="btn-mobile-menu" class="p-2 -ml-2 text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-menu"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+              </button>
+              <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm">
+                <i data-lucide="layers" class="w-5 h-5"></i>
+              </div>
+              <span class="font-bold text-slate-900">UPGRADE</span>
             </div>
-            <span class="font-bold text-slate-900">UPGRADE</span>
           </div>
 
           <!-- 中間：iOS Segmented Control (視圖切換) - Desktop -->
@@ -100,8 +114,25 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
 
   // 渲染圖示
   createIcons({
-    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin },
+    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin, Menu },
     attrs: { class: 'w-5 h-5' }
+  });
+
+  // 桌面版側欄收合邏輯
+  const desktopSidebar = document.getElementById('desktop-sidebar');
+  const btnCollapse = document.getElementById('btn-collapse-sidebar');
+  const btnExpand = document.getElementById('btn-expand-sidebar');
+
+  btnCollapse?.addEventListener('click', () => {
+    desktopSidebar.classList.add('md:hidden');
+    btnExpand.classList.remove('md:hidden');
+    localStorage.setItem('sidebar_collapsed', 'true');
+  });
+
+  btnExpand?.addEventListener('click', () => {
+    desktopSidebar.classList.remove('md:hidden');
+    btnExpand.classList.add('md:hidden');
+    localStorage.setItem('sidebar_collapsed', 'false');
   });
 
   // 綁定事件
@@ -142,8 +173,6 @@ function renderNavItems(user, onNavigate, closeDrawer) {
   const role = user.role;
   const allowedAreas = Array.isArray(user.allowedAreas) ? user.allowedAreas : [];
 
-  // 是否顯示「生產區域」：admin 永遠顯示；user 若 allowedAreas 為空（向後相容）也顯示
-  // 若 user 明確指定 allowedAreas 但陣列為空，代表未被授權任何區域 → 隱藏選單
   const showAreaMenu = role === 'admin' || allowedAreas.length > 0 || allowedAreas.length === 0;
 
   const routes = [
@@ -300,6 +329,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792939200
+V: 1792958000
 W: UPGRADE-005
 */
