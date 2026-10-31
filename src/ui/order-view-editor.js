@@ -3,6 +3,7 @@ import { getDocument, getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { openRouteBuilder } from './route-builder.js';
+import { openOrderDetailModal } from './order-detail-modal.js';
 import { AppState } from '../config/state.js';
 import { createIcons, GripVertical, Plus, X } from 'lucide';
 
@@ -139,9 +140,30 @@ window.addEventListener('open-route-builder', async (e) => {
 });
 
 /**
- * 處理全域點擊事件（上/下工序與編輯製程）
+ * 處理全域點擊事件（點擊工單號碼彈窗、上/下工序與編輯製程）
  */
 document.addEventListener('click', async (e) => {
+  // 0. 點擊工單號碼，開啟詳細資料彈窗
+  const detailBtn = e.target.closest('button[data-action="open-order-detail"]');
+  if (detailBtn) {
+    const id = detailBtn.dataset.id;
+    try {
+      const orderDoc = await getDocument('work_orders', id);
+      const settingsDoc = await getDocument('settings', 'main');
+      
+      if (orderDoc && settingsDoc) {
+        openOrderDetailModal({
+          order: orderDoc,
+          currentSettings: settingsDoc
+        });
+      }
+    } catch (err) {
+      console.error('[Open Detail Error]', err);
+      showToast('無法開啟詳細資料', 'error');
+    }
+    return;
+  }
+
   // 1. 點擊上一個工序
   const prevBtn = e.target.closest('button[data-action="prev-step"]');
   if (prevBtn) {
@@ -333,7 +355,7 @@ document.addEventListener('click', async (e) => {
     element.querySelector('#modal-template-select').addEventListener('change', (ev) => {
       const idx = parseInt(ev.target.value);
       if (!isNaN(idx) && routeTemplates[idx]) {
-        currentSteps = [...routeTemplates[idx].steps];
+        currentSteps = Array.from(routeTemplates[idx].steps);
         renderModalLists();
         showToast(`已套用模板：${routeTemplates[idx].name}`, 'info');
         ev.target.value = ''; // 重設下拉選單
@@ -391,6 +413,6 @@ document.addEventListener('click', async (e) => {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792954000
+V: 1792971000
 W: UPGRADE-005
 */
