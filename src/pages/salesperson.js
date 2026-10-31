@@ -8,6 +8,7 @@ let unsubscribe = null;
 let currentOrders = [];
 let schema = [];
 let viewConfig = {};
+let areas = [];
 let currentRep = '';
 
 export default {
@@ -20,6 +21,7 @@ export default {
       if (settingsDoc) {
         schema = settingsDoc.schema || [];
         viewConfig = settingsDoc.view_configs || {};
+        areas = settingsDoc.areas || [];
       }
     } catch (err) {}
 
@@ -34,7 +36,17 @@ export default {
     });
 
     window.addEventListener('refresh-salesperson', this.updateUI.bind(this));
-    window.addEventListener('settings-updated', this.updateUI.bind(this));
+    window.addEventListener('settings-updated', async () => {
+      try {
+        const settingsDoc = await getDocument('settings', 'main');
+        if (settingsDoc) {
+          schema = settingsDoc.schema || [];
+          viewConfig = settingsDoc.view_configs || {};
+          areas = settingsDoc.areas || [];
+          this.updateUI();
+        }
+      } catch (err) {}
+    });
 
     this.initDataListener();
   },
@@ -56,8 +68,6 @@ export default {
       if (user.role === 'sales') {
         if (allowedSales.length > 0) {
           reps = reps.filter(r => allowedSales.includes(r));
-        } else {
-          // 若未設定授權，預設可看全部（向後相容）
         }
       }
 
@@ -121,10 +131,15 @@ export default {
     const filtered = currentOrders.filter(o => (o.salesReps || ['未填寫']).includes(currentRep));
 
     // 依使用者設定的順序對齊欄位
-    const visibleFields = (viewConfig['salesperson'] || []).map(key => {
+    let visibleFields = (viewConfig['salesperson'] || []).map(key => {
       const field = schema.find(f => f.key === key);
       return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
+
+    // 強制加入「區域」欄位，插在「發票」之後（或最前面）
+    if (!visibleFields.some(f => f.key === 'area_name')) {
+      visibleFields.splice(1, 0, { key: 'area_name', label: '所在區域', isVisible: true });
+    }
 
     renderOrderView({
       containerId: 'salesperson-container',
@@ -132,7 +147,9 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'salesperson',
-      isReadOnly: true, // 設定為唯讀，銷售員不能修改
+      isReadOnly: true, // 設定為唯讀
+      groupBy: 'status', // 按工序分區塊顯示
+      areas: areas, // 傳入區域資料供比對
       onAction: async (action, id, newStatus) => {
         // 唯讀模式下不會觸發這些
       }
@@ -148,6 +165,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/salesperson.js
-V: 1792984000
+V: 1792988000
 W: UPGRADE-005
 */
