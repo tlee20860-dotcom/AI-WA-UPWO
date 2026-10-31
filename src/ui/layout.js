@@ -66,7 +66,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
             </div>
           </div>
 
-          <!-- 中間：iOS Segmented Control (視圖切換) - Desktop -->
+          <!-- 中間：iOS Segmented Control (視圖切換) - Desktop (僅 admin/viewer 顯示) -->
           <div class="hidden md:flex segmented-control" id="top-segmented-control">
             <!-- 由 renderNavItems 動態注入 -->
           </div>
@@ -167,21 +167,18 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
 
 /**
  * 繪製導覽選單項目
- * 依使用者 role 與 allowedAreas 過濾顯示
+ * 依使用者 role 過濾顯示
  */
 function renderNavItems(user, onNavigate, closeDrawer) {
   const role = user.role;
-  const allowedAreas = Array.isArray(user.allowedAreas) ? user.allowedAreas : [];
-
-  const showAreaMenu = role === 'admin' || allowedAreas.length > 0 || allowedAreas.length === 0;
 
   const routes = [
-    { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'user'] },
-    { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'user'] },
-    { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'user'] },
-    { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'user'] },
-    { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'user'] },
-    { id: 'area', label: '生產區域', icon: 'map-pin', roles: ['admin', 'user'], visible: showAreaMenu },
+    { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'viewer'] },
+    { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'viewer'] },
+    { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'viewer'] },
+    { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'viewer'] },
+    { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'viewer', 'sales'] },
+    { id: 'area', label: '生產區域', icon: 'map-pin', roles: ['admin', 'viewer', 'worker'] },
     { id: 'settings', label: '系統設定', icon: 'settings', roles: ['admin'] },
     { id: 'admin-data', label: '資料總管', icon: 'database', roles: ['admin'] }
   ];
@@ -192,7 +189,6 @@ function renderNavItems(user, onNavigate, closeDrawer) {
 
   routes.forEach(route => {
     if (!route.roles.includes(role)) return;
-    if (route.visible === false) return;
 
     // 側邊欄項目
     if (sidebarNav) {
@@ -223,8 +219,8 @@ function renderNavItems(user, onNavigate, closeDrawer) {
       mobileNav.appendChild(btn);
     }
 
-    // 頂部 Segmented Control 項目 (排除 admin-data 與 area 以免太擠)
-    if (topControl && route.id !== 'admin-data' && route.id !== 'area') {
+    // 頂部 Segmented Control 項目 (排除 admin-data 與 area 以免太擠，且僅限 admin/viewer)
+    if (topControl && route.id !== 'admin-data' && route.id !== 'area' && route.roles.includes('admin')) {
       const segment = document.createElement('div');
       segment.className = 'segment-btn';
       segment.dataset.route = route.id;
@@ -320,7 +316,7 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
     </div>
   `;
 
-  // 重新渲染圖示（補上缺少的參數）
+  // 重新渲染圖示
   createIcons({
     icons: { Activity, ClipboardList },
     attrs: { class: 'w-4 h-4' }
@@ -329,6 +325,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792958000
+V: 1792979000
 W: UPGRADE-005
 */
