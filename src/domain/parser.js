@@ -122,7 +122,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 💡 核心欄位別名映射表 (用於識別匯出的 Excel 或公司系統報表)
+  // 核心欄位別名映射表 (用於識別匯出的 Excel 或公司系統報表)
   const coreAliases = {
     id: ['工單號碼', '單號', '發票', 'id', '登錄'],
     status: ['狀態', '生產進度', 'status'],
@@ -130,7 +130,8 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     dueDate: ['交貨日期', '交貨日', '預計日期', 'dueDate'],
     uploadDate: ['上傳日期', '開單日期', '日期', 'uploadDate'],
     salesReps: ['銷售員', 'salesRep', 'salesReps', '我方備考'],
-    source: ['來源', 'source']
+    source: ['來源', 'source'],
+    supplierName: ['外發商', '工單類別/外發商', '供應商', '外發廠商'] // 💡 新增外發商識別
   };
 
   // 找出核心欄位在 Excel 中的索引
@@ -162,7 +163,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     const rawIdVal = row[coreIndices['id']];
     const orderId = rawIdVal !== undefined && rawIdVal !== null ? String(rawIdVal).trim() : "";
     
-    // 💡 核心邏輯：遇到 A 欄（工單號碼）為空，直接中斷迴圈（完美剔除尾部的總計與備註）
+    // 核心邏輯：遇到 A 欄（工單號碼）為空，直接中斷迴圈（完美剔除尾部的總計與備註）
     if (!orderId) {
       break;
     }
@@ -214,11 +215,16 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
     const normalizedReps = normalizeSalesRep(rawSalesRep, salesMapping);
 
+    // 外發商 (supplierName)
+    let supplierName = "";
+    if (coreIndices['supplierName'] !== undefined && row[coreIndices['supplierName']] !== undefined) {
+      supplierName = String(row[coreIndices['supplierName']]).trim();
+    }
 
     // --- 收集動態欄位資料 ---
     const data = {};
     
-    // 💡 自動擷取工單號前兩碼英文作為類別 (若資料中沒有設定 category)
+    // 自動擷取工單號前兩碼英文作為類別 (若資料中沒有設定 category)
     const categoryMatch = orderId.match(/^[a-zA-Z]+/);
     data['category'] = categoryMatch ? categoryMatch[0].toUpperCase() : '其他';
 
@@ -235,6 +241,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       status: status,
       route: route,
       salesReps: normalizedReps,
+      supplierName: supplierName, // 💡 寫入外發商
       uploadDate: uploadDate,
       statusUpdateDate: nowStr.split('T')[0], // 狀態更新日預設為今天
       dueDate: dueDate,
@@ -248,6 +255,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
 /*
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1793047000
+V: 1793066000
 W: UPGRADE-007
 */
