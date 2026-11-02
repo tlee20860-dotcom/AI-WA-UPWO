@@ -72,6 +72,14 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     ];
   }
 
+  // 💡 名詞替換：若欄位 key 為 route_select 或 route，一律顯示為「製程路線圖」
+  displayFields = displayFields.map(f => {
+    if (f.key === 'route_select' || f.key === 'route') {
+      return Object.assign({}, f, { label: '製程路線圖' });
+    }
+    return f;
+  });
+
   // 3. 全域事件委派
   if (!window._orderViewListenerAdded) {
     document.addEventListener('click', (e) => {
@@ -169,6 +177,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   }
 
   const allStatuses = AppState.getStatuses() || [];
+  // 判斷是否為工單進度表（看板），允許推進度
+  const isKanban = groupBy === 'status' || pageKey === 'kanban';
 
   // 5. 生成 HTML
   const viewToggleHtml = `
@@ -216,13 +226,14 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
           if (f.key === 'id') {
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
           }
+          
           if (f.key === 'status') {
-            // 若完全唯讀且不允許改狀態，顯示純文字
-            if (isReadOnly && !allowStatusChange) {
-              return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span>${diffHtml}</div>`;
+            // 若完全唯讀或不是看板，顯示純文字
+            if ((isReadOnly && !allowStatusChange) || !isKanban) {
+              return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700 ml-1">${order.status}</span>${diffHtml}</div>`;
             }
 
-            // 💡 修正：正規化 route
+            // 看板的上下步按鈕
             let route = order.route ? normalizeRoute(order.route) : allStatuses;
             if (route.length === 0) route = allStatuses;
 
@@ -233,8 +244,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const prevStep = isFirst ? '' : route[idx - 1];
             const nextStep = isLast ? '' : route[idx + 1];
             const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
-
-            const showGear = !isReadOnly && !allowStatusChange;
 
             return `
               <div class="text-sm flex flex-col gap-1">
@@ -251,18 +260,12 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     <span class="truncate max-w-[60px]">${nextStep}</span>
                     <i data-lucide="chevron-right" class="w-4 h-4"></i>
                   </button>
-                  ${showGear ? `
-                  <div class="w-px h-4 bg-slate-200 mx-1"></div>
-                  <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                    class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
-                    <i data-lucide="settings" class="w-4 h-4"></i>
-                  </button>
-                  ` : ''}
                 </div>
               </div>
             `;
           }
-          
+
+          // 💡 顯示製程路線圖（取代原本的下拉選單）
           if (f.key === 'route_select') {
             const orderCat = getOrderCategory(order);
             const availableTemplates = (route_templates || []).filter(t => {
@@ -270,9 +273,8 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               return t.categories.includes(orderCat);
             });
 
-            // 💡 修正：正規化 route 再比對
             const currentRouteArr = order.route ? normalizeRoute(order.route) : [];
-            let currentMatchName = '';
+            let currentMatchName = '自訂流程';
             availableTemplates.forEach(t => {
               if (JSON.stringify(t.steps) === JSON.stringify(currentRouteArr)) {
                 currentMatchName = t.name;
@@ -282,37 +284,19 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             return `
               <div class="text-sm flex flex-col gap-1">
                 <span class="text-slate-400">${f.label}:</span>
-                <div class="flex items-center gap-2">
-                  <select data-action="select-route" data-id="${order.id}" class="flex-1 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand">
-                    <option value="">(自訂流程)</option>
-                    ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
-                  </select>
-                  <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
-                    <i data-lucide="plus" class="w-4 h-4"></i>
-                  </button>
-                </div>
+                <span class="font-medium text-slate-700">${currentMatchName}</span>
               </div>
             `;
           }
 
-          if (f.isEditable && !isReadOnly && !allowStatusChange) {
-            const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
-            const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
-            
-            return `
-              <div class="text-sm flex flex-col gap-1">
-                <span class="text-slate-400 flex items-center">${f.label}: ${diffHtml}</span>
-                <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
-                  class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors">
-              </div>
-            `;
+          // 若為一般顯示 route
+          if (f.key === 'route') {
+            let displayVal = normalizeRoute(val).join(' → ');
+            return `<div class="text-sm flex flex-col gap-1"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${displayVal || '-'}</span>${diffHtml}</div>`;
           }
-          
-          // 💡 若是一般顯示 route (非下拉選單)，也格式化一下
-          let displayVal = val;
-          if (f.key === 'route') displayVal = normalizeRoute(val).join(' → ');
 
-          return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${displayVal || '-'}</span>${diffHtml}</div>`;
+          // 💡 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
+          return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${val || '-'}</span>${diffHtml}</div>`;
         }).join('')}
         ${isAdmin ? `
           <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
@@ -348,12 +332,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                   if (f.key === 'id') {
                     return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
                   }
+                  
                   if (f.key === 'status') {
-                    if (isReadOnly && !allowStatusChange) {
-                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700 flex items-center">${order.status}${diffHtml}</td>`;
+                    if ((isReadOnly && !allowStatusChange) || !isKanban) {
+                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}${diffHtml}</td>`;
                     }
 
-                    // 💡 修正：正規化 route
+                    // 看板的上下步按鈕
                     let route = order.route ? normalizeRoute(order.route) : allStatuses;
                     if (route.length === 0) route = allStatuses;
 
@@ -364,7 +349,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     const prevStep = isFirst ? '' : route[idx - 1];
                     const nextStep = isLast ? '' : route[idx + 1];
                     const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
-                    const showGear = !isReadOnly && !allowStatusChange;
 
                     return `
                       <td class="px-4 py-3 whitespace-nowrap">
@@ -380,19 +364,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                             <span class="truncate max-w-[60px]">${nextStep}</span>
                             <i data-lucide="chevron-right" class="w-4 h-4"></i>
                           </button>
-                          ${showGear ? `
-                          <div class="w-px h-4 bg-slate-200 mx-1"></div>
-                          <button data-action="edit-route" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
-                            class="p-1 rounded text-slate-400 hover:text-brand hover:bg-white transition-colors" title="編輯製程">
-                            <i data-lucide="settings" class="w-4 h-4"></i>
-                          </button>
-                          ` : ''}
                           ${diffHtml}
                         </div>
                       </td>
                     `;
                   }
 
+                  // 💡 顯示製程路線圖（取代原本的下拉選單）
                   if (f.key === 'route_select') {
                     const orderCat = getOrderCategory(order);
                     const availableTemplates = (route_templates || []).filter(t => {
@@ -400,50 +378,25 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       return t.categories.includes(orderCat);
                     });
 
-                    // 💡 修正：正規化 route 再比對
                     const currentRouteArr = order.route ? normalizeRoute(order.route) : [];
-                    let currentMatchName = '';
+                    let currentMatchName = '自訂流程';
                     availableTemplates.forEach(t => {
                       if (JSON.stringify(t.steps) === JSON.stringify(currentRouteArr)) {
                         currentMatchName = t.name;
                       }
                     });
 
-                    return `
-                      <td class="px-4 py-3 whitespace-nowrap">
-                        <div class="flex items-center gap-1">
-                          <select data-action="select-route" data-id="${order.id}" class="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand w-32 md:w-40">
-                            <option value="">(自訂流程)</option>
-                            ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
-                          </select>
-                          <button data-action="open-route-builder" data-id="${order.id}" data-category="${orderCat}" class="p-1.5 bg-brand/10 text-brand rounded-lg hover:bg-brand/20 transition-colors" title="快速新增流程">
-                            <i data-lucide="plus" class="w-4 h-4"></i>
-                          </button>
-                        </div>
-                      </td>
-                    `;
+                    return `<td class="px-4 py-3 whitespace-nowrap text-slate-600">${currentMatchName}</td>`;
                   }
                   
-                  if (f.isEditable && !isReadOnly && !allowStatusChange) {
-                    const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
-                    const displayVal = f.type === 'date' ? formatExcelDate(getOrderValue(order, f.key)) : getOrderValue(order, f.key);
-                    
-                    return `
-                      <td class="px-2 py-2 whitespace-nowrap">
-                        <div class="flex items-center">
-                          <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
-                            class="w-full px-2 py-1.5 bg-transparent border border-transparent hover:border-slate-200 focus:border-brand focus:bg-white rounded-lg text-sm transition-colors outline-none ${order.diff && order.diff[f.key] ? 'text-rose-600' : ''}">
-                          ${diffHtml}
-                        </div>
-                      </td>
-                    `;
+                  // 若為一般顯示 route
+                  if (f.key === 'route') {
+                    let displayVal = normalizeRoute(val).join(' → ');
+                    return `<td class="px-4 py-3 whitespace-nowrap text-slate-600">${displayVal || '-'}${diffHtml}</td>`;
                   }
-                  
-                  // 💡 若是一般顯示 route (非下拉選單)，也格式化一下
-                  let displayVal = val;
-                  if (f.key === 'route') displayVal = normalizeRoute(val).join(' → ');
 
-                  return `<td class="px-4 py-3 whitespace-nowrap">${displayVal || '-'}${diffHtml}</td>`;
+                  // 💡 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
+                  return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}${diffHtml}</td>`;
                 }).join('')}
                 ${isAdmin ? `
                   <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -523,6 +476,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1793037000
+V: 1793042000
 W: UPGRADE-007
 */
