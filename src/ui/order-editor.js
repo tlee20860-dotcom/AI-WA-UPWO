@@ -41,6 +41,14 @@ export function renderOrderEditor({
     displayFields = schema.filter(f => f.isEditable);
   }
 
+  // 💡 名詞替換：若欄位為 route，強制覆寫 Label
+  displayFields = displayFields.map(f => {
+    if (f.key === 'route') {
+      return Object.assign({}, f, { label: '製程路線圖' });
+    }
+    return f;
+  });
+
   // 2. 準備表單初始資料
   const formData = {};
   displayFields.forEach(f => {
@@ -82,14 +90,14 @@ export function renderOrderEditor({
           ${displayFields.map(f => {
             const value = formData[f.key] !== undefined ? formData[f.key] : '';
             
-            // 特殊處理：生產流程 (route) 渲染為下拉選單
+            // 特殊處理：製程路線圖 (route) 渲染為下拉選單
             if (f.key === 'route') {
-              // 💡 修正 1：取得工單類別
+              // 取得工單類別
               const orderCategory = (initialData && initialData.data && initialData.data.category) 
                 ? String(initialData.data.category).toUpperCase() 
                 : (formData['id'] ? String(formData['id']).match(/^[a-zA-Z]+/)?.[0]?.toUpperCase() : '其他') || '其他';
 
-              // 💡 修正 2：嚴格過濾符合該類別的模板
+              // 嚴格過濾符合該類別的模板
               const availableTemplates = routeTemplates.filter(t => {
                 if (!t.categories || t.categories.length === 0) return true; // 通用
                 if (Array.isArray(t.categories)) return t.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
@@ -166,7 +174,7 @@ export function renderOrderEditor({
             statusInput.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
             setTimeout(() => statusInput.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200'), 600);
           }
-          showToast(`已套用流程：${templateName}`, 'info');
+          showToast(`已套用路線圖：${templateName}`, 'info');
         }
       }
       return;
@@ -232,6 +240,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793041000
+V: 1793043000
 W: UPGRADE-007
 */
