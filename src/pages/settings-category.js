@@ -1,6 +1,7 @@
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
-import { createIcons, Plus, GripVertical, Trash2, Edit2, Tag } from 'lucide';
+import { getCollection } from '../db/read.js';
+import { createIcons, Plus, GripVertical, Trash2, Edit2, RefreshCw } from 'lucide';
 
 /**
  * 渲染「類別管理」頁籤
@@ -12,10 +13,15 @@ export function renderCategories(container, currentSettings, saveSettings) {
   const categories = currentSettings.categories || [];
 
   container.innerHTML = `
-    <div class="flex justify-between items-center mb-6">
+    <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
       <div>
         <h2 class="text-lg font-bold text-slate-800">工單類別管理</h2>
         <p class="text-sm text-slate-500 mt-1">可拖曳排序。新增類別後，可用於過濾工單與設定區域。</p>
+      </div>
+      <div>
+        <button id="btn-sync-categories" class="bg-white text-brand border border-brand/30 px-4 py-2 rounded-xl text-sm font-medium hover:bg-brand/5 flex items-center gap-2 shadow-sm transition-colors">
+          <i data-lucide="refresh-cw" class="w-4 h-4"></i> 從工單同步類別
+        </button>
       </div>
     </div>
 
@@ -43,7 +49,7 @@ export function renderCategories(container, currentSettings, saveSettings) {
     </div>
   `;
 
-  createIcons({ icons: { Plus, GripVertical, Trash2, Edit2 }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { Plus, GripVertical, Trash2, Edit2, RefreshCw }, attrs: { class: 'w-4 h-4' } });
 
   // 初始化拖曳排序
   const categoryList = document.getElementById('category-list');
@@ -62,6 +68,42 @@ export function renderCategories(container, currentSettings, saveSettings) {
       }
     });
   }
+
+  // 💡 從工單同步類別
+  document.getElementById('btn-sync-categories')?.addEventListener('click', async () => {
+    showToast('正在掃描工單類別...', 'info');
+    try {
+      const orders = await getCollection('work_orders');
+      const currentCats = new Set(categories);
+      let addedCount = 0;
+
+      orders.forEach(o => {
+        let cat = '';
+        if (o.data && o.data.category) {
+          cat = String(o.data.category).toUpperCase();
+        } else {
+          const match = String(o.id).match(/^[a-zA-Z]+/);
+          cat = match ? match[0].toUpperCase() : '其他';
+        }
+
+        if (cat && cat !== '其他' && !currentCats.has(cat)) {
+          currentCats.add(cat);
+          addedCount++;
+        }
+      });
+
+      if (addedCount > 0) {
+        currentSettings.categories = Array.from(currentCats).sort();
+        await saveSettings();
+        showToast(`已自動補齊 ${addedCount} 個新類別`, 'success');
+      } else {
+        showToast('所有工單類別皆已存在，無需補齊', 'info');
+      }
+    } catch (err) {
+      console.error(err);
+      showToast('同步失敗，請查看 Console', 'error');
+    }
+  });
 
   // 新增類別
   document.getElementById('btn-add-category')?.addEventListener('click', async () => {
@@ -121,6 +163,6 @@ export function renderCategories(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-category.js
-V: 1792965000
-W: UPGRADE-005
+V: 1793070000
+W: UPGRADE-007
 */
