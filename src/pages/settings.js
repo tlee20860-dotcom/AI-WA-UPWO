@@ -6,18 +6,17 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
-import { checkDiff } from '../domain/data-diff.js'; // 💡 新增引入
+import { checkDiff } from '../domain/data-diff.js';
 import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check, MapPin, Activity } from 'lucide';
 
 // 引入拆分出去的模組
 import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
-import { renderSchema, renderViewConfig } from './settings-schema.js';
 import { renderAreas } from './settings-area.js';
 import { renderCategories } from './settings-category.js';
 import { renderAreaStatuses } from './settings-area-status.js';
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [], categories: [], areaStatuses: [], diff_fields: [] };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], route_templates: [], areas: [], categories: [], areaStatuses: [] };
 let activeTab = 'statuses';
 let allSalesReps = [];
 
@@ -44,8 +43,8 @@ export default {
     }
 
     renderPageLayout({
-      title: '系統設定',
-      subtitle: '管理工序、類別、區域、銷售員對照表、系統欄位與帳號',
+      title: '生產設定',
+      subtitle: '管理工序、類別、區域、製程模板與銷售員對照表',
       headerActions: '',
       stats: [],
       controls: '',
@@ -60,18 +59,15 @@ export default {
     unsubscribe = listenDocument('settings', 'main', async (data) => {
       let needSave = false;
       if (data) {
-        currentSettings = {
+        currentSettings = Object.assign({}, data, {
           statuses: data.statuses || ['排產中'],
           sales_mapping: data.sales_mapping || [],
           users: data.users || [{ username: 'admin', password: '123456', role: 'admin', allowedAreas: [], allowedSales: [] }],
-          schema: data.schema || this.getDefaultSchema(),
-          view_configs: data.view_configs || this.getDefaultViewConfigs(),
           route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中']),
           areas: Array.isArray(data.areas) ? data.areas : [],
           categories: Array.isArray(data.categories) ? data.categories : [],
-          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中'],
-          diff_fields: Array.isArray(data.diff_fields) ? data.diff_fields : ['amount'] // 💡 新增差異核對欄位
-        };
+          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中']
+        });
 
         // 遷移：areas 不存在
         if (!Array.isArray(data.areas)) needSave = true;
@@ -90,7 +86,7 @@ export default {
             needSave = true;
           }
           if (u.role === 'user') {
-            u.role = 'viewer'; // 將舊的 user 角色升級為一般使用者
+            u.role = 'viewer';
             needSave = true;
           }
         });
@@ -118,48 +114,27 @@ export default {
           }
         }
 
-        // 自動補齊核心欄位
-        const requiredSysFields = [
-          { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
-          { key: 'uploadDate', label: '日期', type: 'date', isSystem: true, isEditable: false },
-          { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true, isEditable: true },
-          { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
-          { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
-          { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false },
-          { key: 'route', label: '製程路線', type: 'string', isSystem: true, isEditable: false }
-        ];
-
-        requiredSysFields.forEach(req => {
-          if (!currentSettings.schema.some(f => f.key === req.key)) {
-            currentSettings.schema.push(req);
-            needSave = true;
-          }
-        });
-
-        if (!currentSettings.view_configs['overview']) {
-          currentSettings.view_configs['overview'] = ['id', 'status', 'salesRep', 'dueDate'];
-          needSave = true;
-        }
-
-        // 資料遷移與修復
-        currentSettings.route_templates.forEach(t => {
-          if (t.category === undefined) {
-            t.category = '';
-            needSave = true;
-          }
-          if ((t.category === '' || t.category === '通用') && (!t.steps || t.steps.length === 0)) {
-            t.steps = Array.from(currentSettings.statuses);
-            needSave = true;
-          }
-        });
-
-        if (!currentSettings.route_templates.some(t => t.category === '' || t.category === '通用')) {
-          currentSettings.route_templates.unshift({
-            name: '預設常規路線',
-            category: '',
-            steps: Array.from(currentSettings.statuses)
+        // 資料遷移與修復：製程模板
+        if (currentSettings.route_templates) {
+          currentSettings.route_templates.forEach(t => {
+            if (t.category === undefined) {
+              t.category = '';
+              needSave = true;
+            }
+            if ((t.category === '' || t.category === '通用') && (!t.steps || t.steps.length === 0)) {
+              t.steps = Array.from(currentSettings.statuses);
+              needSave = true;
+            }
           });
-          needSave = true;
+
+          if (!currentSettings.route_templates.some(t => t.category === '' || t.category === '通用')) {
+            currentSettings.route_templates.unshift({
+              name: '預設常規路線',
+              category: '',
+              steps: Array.from(currentSettings.statuses)
+            });
+            needSave = true;
+          }
         }
 
       } else {
@@ -167,19 +142,17 @@ export default {
           statuses: ['排產中', '印刷', '裁切', '品檢', '出貨'],
           sales_mapping: [],
           users: [{ username: 'admin', password: '123456', role: 'admin', allowedAreas: [], allowedSales: [] }],
-          schema: this.getDefaultSchema(),
-          view_configs: this.getDefaultViewConfigs(),
           route_templates: this.getDefaultRouteTemplates(),
           areas: [],
           categories: [],
-          areaStatuses: ['正常', '壞機', '休息中'],
-          diff_fields: ['amount'] // 💡 預設核對金額
+          areaStatuses: ['正常', '壞機', '休息中']
         };
         needSave = true;
       }
 
       if (needSave) {
-        await setDocument('settings', 'main', currentSettings);
+        // 💡 使用 updateDocument 避免覆蓋掉表單設定頁面維護的 schema/view_configs 等資料
+        await updateDocument('settings', 'main', currentSettings);
       }
 
       AppState.setStatuses(currentSettings.statuses);
@@ -187,37 +160,10 @@ export default {
     });
   },
 
-  getDefaultSchema() {
-    return [
-      { key: 'id', label: '發票', type: 'string', isSystem: true, isEditable: false },
-      { key: 'uploadDate', label: '日期', type: 'date', isSystem: true, isEditable: false },
-      { key: 'salesRep', label: '我方備考', type: 'string', isSystem: true, isEditable: true },
-      { key: 'status', label: '生產進度', type: 'string', isSystem: true, isEditable: false },
-      { key: 'dueDate', label: '交貨日期', type: 'date', isSystem: true, isEditable: true },
-      { key: 'statusUpdateDate', label: '更新日期', type: 'date', isSystem: true, isEditable: false },
-      { key: 'route', label: '製程路線', type: 'string', isSystem: true, isEditable: false },
-      { key: 'amount', label: '金額', type: 'number', isSystem: false, isEditable: true },
-      { key: 'customCategory', label: '類別', type: 'string', isSystem: false, isEditable: true },
-      { key: 'customerNameZh', label: '中文名稱', type: 'string', isSystem: false, isEditable: true },
-      { key: 'customerNameEn', label: '名稱', type: 'string', isSystem: false, isEditable: true }
-    ];
-  },
-
   getDefaultRouteTemplates(statuses = ['排產中', '印刷', '裁切', '品檢', '出貨']) {
     return [
       { name: '預設常規路線', category: '', steps: Array.from(statuses) }
     ];
-  },
-
-  getDefaultViewConfigs() {
-    return {
-      kanban: ['id', 'status', 'customerNameZh', 'salesRep', 'dueDate'],
-      table: ['id', 'customCategory', 'status', 'uploadDate', 'dueDate', 'amount', 'customerNameZh', 'customerNameEn'],
-      category: ['id', 'customCategory', 'status', 'dueDate'],
-      salesperson: ['id', 'customCategory', 'status', 'dueDate'],
-      overview: ['id', 'status', 'salesRep', 'dueDate'],
-      'data-entry': ['id', 'customerNameZh', 'salesRep', 'amount', 'dueDate'] // 💡 新增預設視圖
-    };
   },
 
   renderTabs() {
@@ -245,15 +191,6 @@ export default {
           </button>
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
             <i data-lucide="users" class="w-4 h-4"></i> 對照表管理
-          </button>
-          <button class="tab-btn ${activeTab === 'schema' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="schema">
-            <i data-lucide="list" class="w-4 h-4"></i> 欄位管理
-          </button>
-          
-          <div class="border-t border-slate-200/60 my-2"></div>
-          
-          <button class="tab-btn ${activeTab === 'view_config' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="view_config">
-            <i data-lucide="layout-dashboard" class="w-4 h-4"></i> 視圖配置
           </button>
           
           <div class="border-t border-slate-200/60 my-2"></div>
@@ -307,10 +244,6 @@ export default {
       renderAreaStatuses(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'mapping') {
       renderMapping(content, currentSettings, this.saveSettings.bind(this));
-    } else if (activeTab === 'schema') {
-      renderSchema(content, currentSettings, this.saveSettings.bind(this));
-    } else if (activeTab === 'view_config') {
-      renderViewConfig(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'users') {
       this.renderUsers(content);
     } else if (activeTab === 'data') {
@@ -696,18 +629,20 @@ export default {
           const rows = jsonData.slice(1);
           showToast('解析中，請稍候...', 'info');
 
-          const parsedOrders = parseExcelData(headers, rows, currentSettings.sales_mapping, currentSettings.statuses[0] || '排產中', currentSettings.schema);
+          // 取得最新的全量設定，避免用舊的 schema 解析
+          const latestSettings = await getDocument('settings', 'main');
+
+          const parsedOrders = parseExcelData(headers, rows, latestSettings.sales_mapping || [], latestSettings.statuses?.[0] || '排產中', latestSettings.schema || []);
 
           let addedCount = 0;
           let updatedCount = 0;
-          let diffCount = 0; // 💡 新增差異計數
+          let diffCount = 0;
 
           for (const order of parsedOrders) {
             const existing = await getDocument('work_orders', order.id);
             if (existing) {
-              // 💡 檢查是否為手動工單
               if (existing.source === 'manual') {
-                const diffResult = checkDiff(existing, order, currentSettings.diff_fields || []);
+                const diffResult = checkDiff(existing, order, latestSettings.diff_fields || ['amount']);
                 if (diffResult) {
                   await updateDocument('work_orders', order.id, { diff: diffResult });
                   diffCount++;
@@ -721,13 +656,12 @@ export default {
                 updatedCount++;
               }
             } else {
-              order.source = 'excel'; // 💡 確保來源標記
+              order.source = 'excel';
               await setDocument('work_orders', order.id, order);
               addedCount++;
             }
           }
 
-          // 💡 組合提示訊息
           let msg = `匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`;
           if (diffCount > 0) {
             msg += ` 其中 ${diffCount} 筆與手動輸入資料不符。`;
@@ -745,7 +679,8 @@ export default {
   },
 
   async saveSettings() {
-    await setDocument('settings', 'main', currentSettings);
+    // 為了避免覆蓋掉表單設定頁面的資料，這裡改用更新方式
+    await updateDocument('settings', 'main', currentSettings);
     this.renderTabs();
   },
 
@@ -759,6 +694,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793001000
+V: 1793009000
 W: UPGRADE-007
 */
