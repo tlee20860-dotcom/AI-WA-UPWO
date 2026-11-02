@@ -12,6 +12,7 @@ import SettingsPage from '../pages/settings.js';
 import CategoryPage from '../pages/category.js';
 import AdminDataPage from '../pages/admin-data.js';
 import AreaPage from '../pages/area.js';
+import DataEntryPage from '../pages/data-entry.js'; // 新增
 
 const routes = {
   login: LoginPage,
@@ -22,7 +23,8 @@ const routes = {
   settings: SettingsPage,
   category: CategoryPage,
   'admin-data': AdminDataPage,
-  area: AreaPage
+  area: AreaPage,
+  'data-entry': DataEntryPage // 新增路由
 };
 
 let currentPageInstance = null;
@@ -65,8 +67,8 @@ function handleRoute() {
       return;
     }
 
-    // 一般使用者 (viewer)：不能進入系統設定與資料總管
-    if (role === 'viewer' && (hash === 'settings' || hash === 'admin-data')) {
+    // 一般使用者 (viewer)：不能進入系統設定、資料總管與資料錄入
+    if (role === 'viewer' && (hash === 'settings' || hash === 'admin-data' || hash === 'data-entry')) {
       showToast('您沒有權限訪問此頁面', 'error');
       window.location.hash = '#kanban';
       return;
@@ -148,6 +150,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792978000
-W: UPGRADE-005
+V: 1792994000
+W: UPGRADE-007
 */
