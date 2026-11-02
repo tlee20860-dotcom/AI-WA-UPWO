@@ -6,7 +6,7 @@ import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { openOrderModal } from '../ui/order-detail-modal.js'; // 💡 引入新的合併彈窗
+import { openOrderModal } from '../ui/order-detail-modal.js';
 import { createIcons, Download, FileText, Plus } from 'lucide';
 
 let unsubscribe = null;
@@ -62,7 +62,7 @@ export default {
       this.updateUI();
     });
 
-    // 💡 新增工單按鈕
+    // 新增工單按鈕
     document.getElementById('btn-new-order')?.addEventListener('click', () => {
       openOrderModal({ 
         orderId: null, 
@@ -119,9 +119,9 @@ export default {
       return field ? Object.assign({}, field, { isVisible: true }) : null;
     }).filter(Boolean);
 
-    // 強制插入「生產流程」欄位（若不存在）
+    // 💡 修改：強制插入「製程路線圖」欄位（若不存在）
     if (!visibleFields.some(f => f.key === 'route_select')) {
-      visibleFields.unshift({ key: 'route_select', label: '生產流程', isVisible: true });
+      visibleFields.unshift({ key: 'route_select', label: '製程路線圖', isVisible: true });
     }
 
     renderOrderView({
@@ -169,6 +169,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/table.js
-V: 1793029000
+V: 1793044000
 W: UPGRADE-007
 */
