@@ -1,6 +1,6 @@
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
-import { createIcons, Plus, Trash2, Edit2, LayoutDashboard, Table, PieChart, Layers, Users, GripVertical, X, Check } from 'lucide';
+import { createIcons, Plus, Trash2, Edit2, LayoutDashboard, Table, PieChart, Layers, Users, GripVertical, X, Check, FileEdit } from 'lucide';
 
 let activeViewPage = 'kanban';
 
@@ -154,8 +154,14 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
     { key: 'table', label: '管理總表', icon: 'table' },
     { key: 'overview', label: '總狀態視圖', icon: 'pie-chart' },
     { key: 'category', label: '類別視圖', icon: 'layers' },
-    { key: 'salesperson', label: '銷售員視圖', icon: 'users' }
+    { key: 'salesperson', label: '銷售員視圖', icon: 'users' },
+    { key: 'data-entry', label: '資料錄入表單', icon: 'file-edit' } // 💡 新增資料錄入表單選項
   ];
+
+  // 確保 view_configs['data-entry'] 存在，避免報錯
+  if (!currentSettings.view_configs['data-entry']) {
+    currentSettings.view_configs['data-entry'] = [];
+  }
 
   // 取得當前頁面已顯示的欄位（保持自訂順序）
   const activeFields = currentSettings.view_configs[activeViewPage] || [];
@@ -286,6 +292,6 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-schema.js
-V: 1792974000
-W: UPGRADE-005
+V: 1792996000
+W: UPGRADE-007
 */
