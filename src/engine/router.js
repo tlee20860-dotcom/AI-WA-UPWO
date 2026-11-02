@@ -12,7 +12,8 @@ import SettingsPage from '../pages/settings.js';
 import CategoryPage from '../pages/category.js';
 import AdminDataPage from '../pages/admin-data.js';
 import AreaPage from '../pages/area.js';
-import DataEntryPage from '../pages/data-entry.js'; // 新增
+import DataEntryPage from '../pages/data-entry.js';
+import SearchPage from '../pages/search.js'; // 💡 新增
 
 const routes = {
   login: LoginPage,
@@ -24,7 +25,8 @@ const routes = {
   category: CategoryPage,
   'admin-data': AdminDataPage,
   area: AreaPage,
-  'data-entry': DataEntryPage // 新增路由
+  'data-entry': DataEntryPage,
+  search: SearchPage // 💡 新增路由
 };
 
 let currentPageInstance = null;
@@ -150,6 +152,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1792994000
+V: 1793006000
 W: UPGRADE-007
 */
