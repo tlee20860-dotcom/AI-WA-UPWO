@@ -1,6 +1,6 @@
 import { AppState } from '../config/state.js';
 import { listenDocument } from '../db/read.js';
-import { setDocument, updateDocument } from '../db/write.js';
+import { updateDocument } from '../db/write.js'; // 💡 修正：引入 updateDocument
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { createIcons, LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2, Menu, GripVertical, Settings } from 'lucide';
@@ -372,7 +372,7 @@ export default {
   },
 
   async saveSettings() {
-    // 只更新屬於表單設定範圍的欄位
+    // 💡 修正：只更新屬於表單設定範圍的欄位，使用 updateDocument 避免覆蓋其他設定
     const dataToSave = {
       schema: currentSettings.schema,
       view_configs: currentSettings.view_configs,
@@ -381,8 +381,7 @@ export default {
       diff_fields: currentSettings.diff_fields,
       nav_config: currentSettings.nav_config
     };
-    await setDocument('settings', 'main', dataToSave);
-    // 這裡不重新渲染，避免拖曳後因為重新渲染導致畫面閃爍。由各儲存按鈕自行決定是否刷新。
+    await updateDocument('settings', 'main', dataToSave);
   },
 
   destroy() {
@@ -395,6 +394,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-form.js
-V: 1793022000
+V: 1793024000
 W: UPGRADE-007
 */
