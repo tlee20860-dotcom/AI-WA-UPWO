@@ -3,18 +3,21 @@ import { showToast } from './toast.js';
 import { evaluate } from '../domain/formula-engine.js';
 
 /**
+ * 輔助函式：將可能是字串或陣列的 route 統一轉為陣列
+ */
+function normalizeRoute(route) {
+  if (Array.isArray(route)) return route;
+  if (typeof route === 'string') {
+    if (route.includes(',')) return route.split(',').map(s => s.trim()).filter(Boolean);
+    if (route.includes('→')) return route.split('→').map(s => s.trim()).filter(Boolean);
+    return [route.trim()];
+  }
+  return [];
+}
+
+/**
  * 渲染工單錄入/編輯表單
  * @param {Object} options
- * @param {HTMLElement} options.container 目標容器
- * @param {Object} options.schema 系統欄位設定
- * @param {Object} options.formulas 公式設定
- * @param {Object} options.viewConfig 視圖配置 (決定要顯示的欄位與順序)
- * @param {Array} options.routeTemplates 系統設定的製程模板
- * @param {string} options.layoutMode 佈局模式 'A' (一頁到底) | 'B' (分頁) | 'C' (左右對照)
- * @param {Object} options.initialData 初始資料 (若為編輯模式，帶入現有資料；若為新增，為 null)
- * @param {boolean} options.isViewMode 是否為檢視模式 (唯讀)
- * @param {Function} options.onSave 儲存回呼 async (data) => {}
- * @param {Function} options.onCancel 取消回呼
  */
 export function renderOrderEditor({ 
   container, 
@@ -35,7 +38,6 @@ export function renderOrderEditor({
   if (viewConfig && viewConfig.length > 0) {
     displayFields = viewConfig.map(key => schema.find(f => f.key === key)).filter(Boolean);
   } else {
-    // Fallback: 若無配置，顯示所有 isEditable 欄位
     displayFields = schema.filter(f => f.isEditable);
   }
 
@@ -55,7 +57,7 @@ export function renderOrderEditor({
     }
   });
 
-  // 3. 繪製 HTML (移除強制高度，讓外層 Modal 控制滾動)
+  // 3. 繪製 HTML
   let html = `
     <div class="bg-transparent flex flex-col">
       <!-- Header (固定) -->
@@ -84,7 +86,9 @@ export function renderOrderEditor({
             if (f.key === 'route') {
               let currentMatchName = '';
               if (initialData && initialData.route) {
-                const matched = routeTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(initialData.route));
+                // 💡 修正：先正規化再比對
+                const currentRouteArr = normalizeRoute(initialData.route);
+                const matched = routeTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(currentRouteArr));
                 if (matched) currentMatchName = matched.name;
               }
 
@@ -222,6 +226,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793034000
+V: 1793035000
 W: UPGRADE-007
 */
