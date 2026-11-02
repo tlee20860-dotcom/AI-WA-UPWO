@@ -6,6 +6,7 @@ import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
+import { openOrderModal } from '../ui/order-detail-modal.js'; // 💡 引入新的合併彈窗
 import { createIcons, Download, FileText, Plus } from 'lucide';
 
 let unsubscribe = null;
@@ -14,17 +15,18 @@ let schema = [];
 let viewConfig = {};
 let route_templates = [];
 let currentCategory = 'ALL';
+let currentSettings = null;
 
 export default {
   async render() {
     if (!AppState.getUser()) return;
 
     try {
-      const settingsDoc = await getDocument('settings', 'main');
-      if (settingsDoc) {
-        schema = settingsDoc.schema || [];
-        viewConfig = settingsDoc.view_configs || {};
-        route_templates = settingsDoc.route_templates || [];
+      currentSettings = await getDocument('settings', 'main');
+      if (currentSettings) {
+        schema = currentSettings.schema || [];
+        viewConfig = currentSettings.view_configs || {};
+        route_templates = currentSettings.route_templates || [];
       }
     } catch (err) {}
 
@@ -33,8 +35,8 @@ export default {
       subtitle: '所有工單的狀態、時間與流程追蹤列表',
       headerActions: `
         <div class="flex items-center gap-2">
-          <button id="btn-new-route" class="bg-brand text-white border border-brand px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand-hover flex items-center gap-2 shadow-sm">
-            <i data-lucide="plus" class="w-4 h-4"></i> 快速新增流程
+          <button id="btn-new-order" class="bg-brand text-white border border-brand px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand-hover flex items-center gap-2 shadow-sm transition-colors">
+            <i data-lucide="plus" class="w-4 h-4"></i> 新增工單
           </button>
           <button id="btn-export-excel" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
             <i data-lucide="download" class="w-4 h-4"></i> Excel
@@ -60,11 +62,13 @@ export default {
       this.updateUI();
     });
 
-    // 快速新增流程（不綁定特定工單）
-    document.getElementById('btn-new-route')?.addEventListener('click', () => {
-      window.dispatchEvent(new CustomEvent('open-route-builder', { 
-        detail: { orderId: null, defaultCategory: '' } 
-      }));
+    // 💡 新增工單按鈕
+    document.getElementById('btn-new-order')?.addEventListener('click', () => {
+      openOrderModal({ 
+        orderId: null, 
+        currentSettings: currentSettings,
+        onSaved: () => this.updateUI() 
+      });
     });
 
     // 監聽工單資料
@@ -75,6 +79,7 @@ export default {
       try {
         const settingsDoc = await getDocument('settings', 'main');
         if (settingsDoc) {
+          currentSettings = settingsDoc;
           schema = settingsDoc.schema || [];
           viewConfig = settingsDoc.view_configs || {};
           route_templates = settingsDoc.route_templates || [];
@@ -125,7 +130,7 @@ export default {
       visibleFields: visibleFields,
       isAdmin: AppState.getUser()?.role === 'admin',
       pageKey: 'table',
-      route_templates: route_templates, // 傳入模板資料
+      route_templates: route_templates,
       onAction: async (action, id, newStatus) => {
         if (action === 'delete') {
           if (await openConfirm({ title: '刪除', message: `確定刪除 ${id}？`, isDanger: true })) {
@@ -146,7 +151,7 @@ export default {
     if (currentOrders.length === 0) return showToast('無資料可匯出', 'info');
     const statuses = AppState.getStatuses() || [];
     try {
-      if (type === 'excel') exportToExcel(currentOrders, statuses, '工單總表', schema);
+      if (type === 'excel') exportToExcel(currentOrders, statuses, '工單總表', schema, viewConfig['export']);
       else exportToPDF(currentOrders, statuses, '工單總表', schema);
       showToast('匯出成功', 'success');
     } catch (err) {
@@ -164,6 +169,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/table.js
-V: 1792955000
-W: UPGRADE-005
+V: 1793029000
+W: UPGRADE-007
 */
