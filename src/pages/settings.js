@@ -3,16 +3,17 @@ import { listenDocument, getDocument, getCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
-import { createIcons, Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers, MapPin, Activity, GitBranch } from 'lucide';
+import { createIcons, Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers, MapPin, Activity, GitBranch, Truck } from 'lucide';
 
 // 引入拆分出去的模組
 import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
 import { renderAreas } from './settings-area.js';
 import { renderCategories } from './settings-category.js';
 import { renderAreaStatuses } from './settings-area-status.js';
+import { renderSuppliers } from './settings-supplier.js'; // 💡 引入供應商模組
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], route_templates: [], areas: [], categories: [], areaStatuses: [] };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], route_templates: [], areas: [], categories: [], areaStatuses: [], suppliers: [], supplier_schema: [] };
 let activeTab = 'statuses';
 
 export default {
@@ -25,7 +26,7 @@ export default {
 
     renderPageLayout({
       title: '生產管理設定',
-      subtitle: '管理工序、類別、製程路線圖、區域與銷售員對照表',
+      subtitle: '管理工序、類別、製程路線圖、區域與外發供應商',
       headerActions: '',
       stats: [],
       controls: '',
@@ -47,7 +48,9 @@ export default {
           route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中']),
           areas: Array.isArray(data.areas) ? data.areas : [],
           categories: Array.isArray(data.categories) ? data.categories : [],
-          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中']
+          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中'],
+          suppliers: Array.isArray(data.suppliers) ? data.suppliers : [], // 💡 初始化供應商
+          supplier_schema: Array.isArray(data.supplier_schema) ? data.supplier_schema : []
         });
 
         // 遷移：areas 不存在
@@ -55,6 +58,9 @@ export default {
         
         // 遷移：areaStatuses 不存在
         if (!Array.isArray(data.areaStatuses)) needSave = true;
+
+        // 遷移：suppliers 不存在
+        if (!Array.isArray(data.suppliers)) needSave = true;
 
         // 遷移：每個使用者補 allowedAreas, allowedSales 欄位，並升級舊角色
         if (Array.isArray(currentSettings.users)) {
@@ -143,20 +149,24 @@ export default {
           route_templates: this.getDefaultRouteTemplates(),
           areas: [],
           categories: [],
-          areaStatuses: ['正常', '壞機', '休息中']
+          areaStatuses: ['正常', '壞機', '休息中'],
+          suppliers: [],
+          supplier_schema: []
         };
         needSave = true;
       }
 
       if (needSave) {
-        // 只更新生產相關欄位，避免覆蓋其他設定
+        // 只更新生產相關欄位，避免覆蓋其他設定（如表單、物料）
         await updateDocument('settings', 'main', {
           statuses: currentSettings.statuses,
           sales_mapping: currentSettings.sales_mapping,
           route_templates: currentSettings.route_templates,
           areas: currentSettings.areas,
           categories: currentSettings.categories,
-          areaStatuses: currentSettings.areaStatuses
+          areaStatuses: currentSettings.areaStatuses,
+          suppliers: currentSettings.suppliers,
+          supplier_schema: currentSettings.supplier_schema
         });
       }
 
@@ -194,8 +204,14 @@ export default {
           <button class="tab-btn ${activeTab === 'area_statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="area_statuses">
             <i data-lucide="activity" class="w-4 h-4"></i> 區域狀態
           </button>
+          
+          <div class="border-t border-slate-200/60 my-2"></div>
+          
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
-            <i data-lucide="users" class="w-4 h-4"></i> 對照表管理
+            <i data-lucide="users" class="w-4 h-4"></i> 銷售員對照表
+          </button>
+          <button class="tab-btn ${activeTab === 'suppliers' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="suppliers">
+            <i data-lucide="truck" class="w-4 h-4"></i> 外發供應商
           </button>
         </div>
 
@@ -204,7 +220,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Layers, MapPin, Activity, GitBranch },
+      icons: { Tag, Users, Layers, MapPin, Activity, GitBranch, Truck },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -237,6 +253,8 @@ export default {
       renderAreaStatuses(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'mapping') {
       renderMapping(content, currentSettings, this.saveSettings.bind(this));
+    } else if (activeTab === 'suppliers') {
+      renderSuppliers(content, currentSettings, this.saveSettings.bind(this));
     }
   },
 
@@ -248,7 +266,9 @@ export default {
       route_templates: currentSettings.route_templates,
       areas: currentSettings.areas,
       categories: currentSettings.categories,
-      areaStatuses: currentSettings.areaStatuses
+      areaStatuses: currentSettings.areaStatuses,
+      suppliers: currentSettings.suppliers,
+      supplier_schema: currentSettings.supplier_schema
     };
     await updateDocument('settings', 'main', dataToSave);
     this.renderTabs();
@@ -264,6 +284,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793056000
+V: 1793065000
 W: UPGRADE-007
 */
