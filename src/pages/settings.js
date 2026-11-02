@@ -648,15 +648,38 @@ export default {
                   diffCount++;
                 }
               } else {
+                // 💡 防覆寫：不更新 status, route, dueDate, uploadDate
                 await updateDocument('work_orders', order.id, {
                   salesReps: order.salesReps,
-                  uploadDate: order.uploadDate,
                   data: order.data
                 });
                 updatedCount++;
               }
             } else {
-              order.source = 'excel';
+              // 💡 新增工單：套用 Excel 的狀態與路線
+              const orderCategory = order.data.category || '其他';
+              let matchedTemplate = (latestSettings.route_templates || []).find(t => {
+                if (t.categories && t.categories.length > 0) return t.categories.includes(orderCategory);
+                if (t.category) return t.category === orderCategory;
+                return false;
+              });
+              
+              if (!matchedTemplate) {
+                matchedTemplate = (latestSettings.route_templates || []).find(t => (!t.categories || t.categories.length === 0) && !t.category);
+              }
+
+              if (!order.route || order.route.length === 0) {
+                if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+                  order.route = matchedTemplate.steps.slice();
+                  order.status = matchedTemplate.steps[0];
+                } else {
+                  order.route = (latestSettings.statuses || ['排產中']).slice();
+                  order.status = (latestSettings.statuses || ['排產中'])[0];
+                }
+              }
+
+              if (!order.source) order.source = 'excel';
+              
               await setDocument('work_orders', order.id, order);
               addedCount++;
             }
@@ -694,6 +717,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793009000
+V: 1793016000
 W: UPGRADE-007
 */
