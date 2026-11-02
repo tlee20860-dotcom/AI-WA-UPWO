@@ -1,6 +1,6 @@
 import { AppState } from '../config/state.js';
 import { listenDocument } from '../db/read.js';
-import { updateDocument } from '../db/write.js'; // 💡 修正：引入 updateDocument
+import { updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { createIcons, LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2, Menu, GripVertical, Settings } from 'lucide';
@@ -67,7 +67,7 @@ export default {
             <i data-lucide="layout" class="w-4 h-4"></i> 視圖配置
           </button>
           <button class="tab-btn ${activeTab === 'nav_config' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="nav_config">
-            <i data-lucide="menu" class="w-4 h-4"></i> 導覽選單
+            <i data-lucide="menu" class="w-4 h-4"></i> 頁面管理
           </button>
           <button class="tab-btn ${activeTab === 'formulas' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="formulas">
             <i data-lucide="function-square" class="w-4 h-4"></i> 公式設定
@@ -125,7 +125,7 @@ export default {
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">表單佈局</h2>
-          <p class="text-sm text-slate-500 mt-1">決定「資料錄入」頁面的排版方式。</p>
+          <p class="text-sm text-slate-500 mt-1">決定「資料錄入」彈窗的排版方式。</p>
         </div>
       </div>
 
@@ -178,34 +178,44 @@ export default {
     // 若無資料則使用預設結構
     if (!currentSettings.nav_config || currentSettings.nav_config.length === 0) {
       currentSettings.nav_config = [
-        { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true },
-        { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false },
-        { id: 'data-entry', label: '資料錄入', icon: 'file-edit', showSidebar: true, showTop: false },
-        { id: 'table', label: '管理總表', icon: 'table', showSidebar: true, showTop: true },
-        { id: 'overview', label: '總狀態', icon: 'pie-chart', showSidebar: true, showTop: true },
-        { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true },
-        { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true },
-        { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false },
-        { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false },
-        { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false },
-        { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false }
+        { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true, isEnabled: true },
+        { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'table', label: '管理總表', icon: 'table', showSidebar: true, showTop: true, isEnabled: true },
+        { id: 'overview', label: '總狀態', icon: 'pie-chart', showSidebar: true, showTop: true, isEnabled: true },
+        { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
+        { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
+        { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }
       ];
     }
+
+    // 確保所有 item 都有 isEnabled
+    currentSettings.nav_config.forEach(item => {
+      if (item.isEnabled === undefined) item.isEnabled = true;
+    });
 
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
         <div>
-          <h2 class="text-lg font-bold text-slate-800">導覽選單配置</h2>
-          <p class="text-sm text-slate-500 mt-1">可拖曳排序。勾選決定該頁面是否顯示於左側選單或頂部快速切換。</p>
+          <h2 class="text-lg font-bold text-slate-800">頁面管理</h2>
+          <p class="text-sm text-slate-500 mt-1">可拖曳排序。勾選決定該頁面是否啟用，以及是否顯示於側欄或頂部。</p>
         </div>
       </div>
 
       <div class="flex flex-col gap-2" id="nav-list">
-        ${currentSettings.nav_config.map((item, index) => `
-          <div class="flex items-center gap-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm nav-item" data-index="${index}">
+        ${currentSettings.nav_config.map((item, index) => {
+          const isCore = item.id === 'table';
+          return `
+          <div class="flex items-center gap-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm nav-item ${!item.isEnabled ? 'opacity-60' : ''}" data-index="${index}">
             <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
-            <div class="flex-1 font-bold text-slate-700">${item.label}</div>
+            <div class="flex-1 font-bold text-slate-700">${item.label} ${isCore ? '<span class="text-[10px] text-brand bg-brand/10 px-1.5 py-0.5 rounded ml-2">核心</span>' : ''}</div>
             <div class="flex items-center gap-6 mr-4">
+              <label class="flex items-center gap-2 cursor-pointer text-sm ${isCore ? 'text-slate-400' : 'text-slate-600'}">
+                <input type="checkbox" class="nav-enabled-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-index="${index}" ${item.isEnabled ? 'checked' : ''} ${isCore ? 'disabled title="核心頁面不可停用"' : ''}>
+                啟用
+              </label>
               <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
                 <input type="checkbox" class="nav-sidebar-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-index="${index}" ${item.showSidebar ? 'checked' : ''}>
                 顯示於側欄
@@ -216,12 +226,13 @@ export default {
               </label>
             </div>
           </div>
-        `).join('')}
+          `;
+        }).join('')}
       </div>
 
       <div class="mt-8 flex justify-end">
         <button id="btn-save-nav" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2">
-          <i data-lucide="save" class="w-4 h-4"></i> 儲存導覽設定
+          <i data-lucide="save" class="w-4 h-4"></i> 儲存頁面管理
         </button>
       </div>
     `;
@@ -236,26 +247,28 @@ export default {
         handle: '.cursor-grab',
         ghostClass: 'opacity-50',
         onEnd: () => {
-          // 拖曳結束後，將 DOM 順序寫回 currentSettings.nav_config
           const newOrderIndexes = Array.from(navList.children).map(el => parseInt(el.dataset.index));
           const newConfig = newOrderIndexes.map(i => currentSettings.nav_config[i]);
           currentSettings.nav_config = newConfig;
-          
-          // 重新渲染以更新 data-index
           this.renderNavConfig(container);
           showToast('順序已更新，請點擊儲存', 'info');
         }
       });
     }
 
-    // 處理 Checkbox 變更
+    // 綁定 Checkbox
+    container.querySelectorAll('.nav-enabled-cb').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.index);
+        currentSettings.nav_config[idx].isEnabled = e.target.checked;
+      });
+    });
     container.querySelectorAll('.nav-sidebar-cb').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.index);
         currentSettings.nav_config[idx].showSidebar = e.target.checked;
       });
     });
-
     container.querySelectorAll('.nav-top-cb').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.index);
@@ -265,9 +278,8 @@ export default {
 
     document.getElementById('btn-save-nav')?.addEventListener('click', async () => {
       await this.saveSettings();
-      // 通知 App 刷新導覽列 (main.js 會監聽 settings-updated 並觸發 nav-config-updated)
       window.dispatchEvent(new Event('nav-config-updated'));
-      showToast('導覽設定已儲存', 'success');
+      showToast('頁面管理已儲存', 'success');
     });
   },
 
@@ -338,9 +350,7 @@ export default {
 
       <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
         ${allFields.map(f => {
-          // id 不參與核對
           if (f.key === 'id') return '';
-          
           const checked = diffFields.includes(f.key);
           return `
             <label class="flex items-center gap-3 bg-white p-4 rounded-xl border border-slate-200 shadow-sm cursor-pointer hover:border-brand">
@@ -372,7 +382,6 @@ export default {
   },
 
   async saveSettings() {
-    // 💡 修正：只更新屬於表單設定範圍的欄位，使用 updateDocument 避免覆蓋其他設定
     const dataToSave = {
       schema: currentSettings.schema,
       view_configs: currentSettings.view_configs,
@@ -394,6 +403,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-form.js
-V: 1793024000
+V: 1793030000
 W: UPGRADE-007
 */
