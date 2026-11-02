@@ -153,6 +153,9 @@ export function renderStatuses(container, currentSettings, saveSettings) {
  * 渲染製程模板管理頁籤
  */
 export function renderRouteTemplates(container, currentSettings, saveSettings) {
+  // 取得類別清單作為下拉選單選項
+  const catOptions = (currentSettings.categories || []).map(c => `<option value="${c}">${c}</option>`).join('');
+
   container.innerHTML = `
     <div class="flex justify-between items-center mb-6">
       <div>
@@ -163,7 +166,13 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
 
     <div class="flex flex-col sm:flex-row gap-2 mb-6">
       <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="模板名稱 (例如：GF生產流程)">
-      <input type="text" id="new-template-category" class="w-full sm:w-48 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="對應類別 (例：GF)">
+      
+      <!-- 💡 改為下拉選單 -->
+      <select id="new-template-category" class="w-full sm:w-48 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
+        <option value="">(通用預設)</option>
+        ${catOptions}
+      </select>
+
       <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
         <i data-lucide="plus" class="w-4 h-4"></i> 新增模板
       </button>
@@ -206,9 +215,9 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
   // 新增模板
   document.getElementById('btn-add-template')?.addEventListener('click', async () => {
     const nameInput = document.getElementById('new-template-name');
-    const catInput = document.getElementById('new-template-category');
+    const catSelect = document.getElementById('new-template-category');
     const name = nameInput.value.trim();
-    const category = catInput.value.trim().toUpperCase();
+    const category = catSelect.value.trim();
     
     if (!name) return;
     if (currentSettings.route_templates.some(t => t.name === name)) {
@@ -250,7 +259,12 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
           </div>
           <div class="flex-1 flex flex-col gap-1">
             <label class="text-sm font-medium text-slate-700">對應類別 (留空為通用)</label>
-            <input type="text" id="edit-tmpl-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.category || ''}" placeholder="例：GF">
+            
+            <!-- 💡 改為下拉選單 -->
+            <select id="edit-tmpl-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none">
+              <option value="">(通用預設)</option>
+              ${(currentSettings.categories || []).map(c => `<option value="${c}" ${tmpl.category === c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
           </div>
         </div>
 
@@ -278,7 +292,6 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
       `;
 
-      // 傳入 size: 'max-w-4xl'
       const { close, element } = openModal({ title: `編輯模板`, content, footer, size: 'max-w-4xl' });
       
       let currentSteps = Array.from(tmpl.steps);
@@ -366,7 +379,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
 
       element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
         const newName = element.querySelector('#edit-tmpl-name').value.trim();
-        const newCategory = element.querySelector('#edit-tmpl-category').value.trim().toUpperCase();
+        const newCategory = element.querySelector('#edit-tmpl-category').value.trim();
         
         if (!newName) {
           showToast('模板名稱不能為空', 'error');
@@ -563,6 +576,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1792960000
-W: UPGRADE-005
+V: 1793039000
+W: UPGRADE-007
 */
