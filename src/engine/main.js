@@ -4,7 +4,7 @@ import { updateDocument } from '../db/write.js';
 import { AppState } from '../config/state.js';
 import '../ui/order-view-editor.js';
 
-// 💡 更新：移除 data-entry，加入 isEnabled 屬性
+// 💡 更新：全新的四大設定中心預設配置
 const defaultNavConfig = [
   { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false, isEnabled: true },
@@ -13,9 +13,10 @@ const defaultNavConfig = [
   { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
-  { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
-  { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
-  { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }
+  { id: 'settings-material', label: '物料管理', icon: 'package', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings', label: '生產管理設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings-form', label: '工單管理設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings-system', label: '系統管理設定', icon: 'shield', showSidebar: true, showTop: false, isEnabled: true }
 ];
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -59,6 +60,33 @@ function listenSettingsUpdates() {
     if (data.statuses) AppState.setStatuses(data.statuses);
     
     if (data.nav_config && Array.isArray(data.nav_config)) {
+      // 💡 自動遷移：如果用戶的舊配置中還有 data-entry 或 admin-data，自動轉換為新結構
+      let configUpdated = false;
+      const migratedConfig = data.nav_config.map(item => {
+        if (item.id === 'admin-data') {
+          configUpdated = true;
+          return null; // 移除舊的 admin-data
+        }
+        return item;
+      }).filter(Boolean);
+
+      // 檢查是否缺少新的設定頁面
+      const newSettingsPages = ['settings-material', 'settings-system'];
+      newSettingsPages.forEach(id => {
+        if (!migratedConfig.some(c => c.id === id)) {
+          const defaultItem = defaultNavConfig.find(c => c.id === id);
+          if (defaultItem) {
+            migratedConfig.push(defaultItem);
+            configUpdated = true;
+          }
+        }
+      });
+
+      if (configUpdated) {
+        data.nav_config = migratedConfig;
+        needSave = true;
+      }
+
       AppState.setNavConfig(data.nav_config);
     } else {
       AppState.setNavConfig(defaultNavConfig);
@@ -154,6 +182,6 @@ function registerServiceWorker() {
 
 /*
 F: AI-WA-UPWO/src/engine/main.js
-V: 1793033000
+V: 1793060000
 W: UPGRADE-007
 */
