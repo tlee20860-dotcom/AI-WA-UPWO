@@ -22,21 +22,7 @@ let diffFields = [];
 // 自動同步相關變數
 let autoSyncInterval = null;
 let directoryHandle = null;
-let lastSyncTime = 0;
 let isSyncing = false;
-
-/**
- * 輔助函式：將可能是字串或陣列的 route 統一轉為陣列
- */
-function normalizeRoute(route) {
-  if (Array.isArray(route)) return route;
-  if (typeof route === 'string') {
-    if (route.includes(',')) return route.split(',').map(s => s.trim()).filter(Boolean);
-    if (route.includes('→')) return route.split('→').map(s => s.trim()).filter(Boolean);
-    return [route.trim()];
-  }
-  return [];
-}
 
 export default {
   async render() {
@@ -218,23 +204,43 @@ export default {
       }
 
       isSyncing = true;
-      let latestFile = null;
-      let latestTime = lastSyncTime;
 
+      // 💡 取得歷史同步紀錄 (以檔名為 key，記錄最後修改時間)
+      let syncTimestamps = {};
+      try {
+        const stored = localStorage.getItem('excel_sync_timestamps');
+        if (stored) syncTimestamps = JSON.parse(stored);
+      } catch (e) {}
+
+      let filesToSync = [];
+
+      // 掃描所有檔案，找出有更新的
       for await (const entry of directoryHandle.values()) {
         if (entry.kind === 'file' && (entry.name.endsWith('.xlsx') || entry.name.endsWith('.xls'))) {
           const file = await entry.getFile();
-          if (file.lastModified > latestTime) {
-            latestTime = file.lastModified;
-            latestFile = file;
+          const lastModified = file.lastModified;
+          const lastSynced = syncTimestamps[file.name] || 0;
+
+          if (lastModified > lastSynced) {
+            filesToSync.push(file);
           }
         }
       }
 
-      if (latestFile) {
-        console.log(`[Auto Sync] 發現更新檔案：${latestFile.name}`);
-        await this.processExcelFile(latestFile, true);
-        lastSyncTime = latestTime;
+      if (filesToSync.length > 0) {
+        // 依修改時間排序，先處理舊的
+        filesToSync.sort((a, b) => a.lastModified - b.lastModified);
+        
+        console.log(`[Auto Sync] 發現 ${filesToSync.length} 個更新檔案準備匯入`);
+
+        for (const file of filesToSync) {
+          await this.processExcelFile(file, true);
+          // 成功匯入後，更新該檔案的同步時間
+          syncTimestamps[file.name] = file.lastModified;
+        }
+        
+        // 寫回 localStorage
+        localStorage.setItem('excel_sync_timestamps', JSON.stringify(syncTimestamps));
       }
 
     } catch (err) {
@@ -250,7 +256,6 @@ export default {
       autoSyncInterval = null;
     }
     directoryHandle = null;
-    lastSyncTime = 0;
     
     const btn = document.getElementById('btn-auto-sync');
     if (btn) {
@@ -261,100 +266,107 @@ export default {
   },
 
   async processExcelFile(file, isAuto = false) {
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
-        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
-        if (jsonData.length < 2) {
-          if (!isAuto) showToast('無資料', 'error');
-          return;
-        }
-
-        if (!isAuto) showToast('解析中...', 'info');
-        
-        let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
-        let routeTemplates = [];
-        
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
         try {
-          const s = await getDocument('settings', 'main');
-          if (s) { 
-            salesMapping = s.sales_mapping || []; 
-            statuses = s.statuses || statuses; 
-            schema = s.schema || schema; 
-            routeTemplates = s.route_templates || [];
-            diffFields = s.diff_fields || [];
+          const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+          const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+          
+          // 💡 因為 parser.js 現在會自動找表頭，所以這裡只要確認陣列不為空即可
+          if (jsonData.length === 0) {
+            if (!isAuto) showToast('無資料', 'error');
+            resolve();
+            return;
           }
-        } catch (err) {}
 
-        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
-        let added = 0, updated = 0, diffCount = 0;
+          if (!isAuto) showToast('解析中...', 'info');
+          
+          let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
+          let routeTemplates = [];
+          
+          try {
+            const s = await getDocument('settings', 'main');
+            if (s) { 
+              salesMapping = s.sales_mapping || []; 
+              statuses = s.statuses || statuses; 
+              schema = s.schema || schema; 
+              routeTemplates = s.route_templates || [];
+              diffFields = s.diff_fields || [];
+            }
+          } catch (err) {}
 
-        for (const order of parsed) {
-          const existing = await getDocument('work_orders', order.id);
-          if (existing) {
-            if (existing.source === 'manual') {
-              const diffResult = checkDiff(existing, order, diffFields);
-              if (diffResult) {
-                await updateDocument('work_orders', order.id, { diff: diffResult });
-                diffCount++;
+          // 💡 直接將原始 jsonData 傳入，parser.js 會自動處理前幾行的空白與表頭偵測
+          const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
+          let added = 0, updated = 0, diffCount = 0;
+
+          for (const order of parsed) {
+            const existing = await getDocument('work_orders', order.id);
+            if (existing) {
+              if (existing.source === 'manual') {
+                const diffResult = checkDiff(existing, order, diffFields);
+                if (diffResult) {
+                  await updateDocument('work_orders', order.id, { diff: diffResult });
+                  diffCount++;
+                }
+              } else {
+                await updateDocument('work_orders', order.id, { 
+                  salesReps: order.salesReps, 
+                  data: order.data 
+                });
+                updated++;
               }
             } else {
-              await updateDocument('work_orders', order.id, { 
-                salesReps: order.salesReps, 
-                data: order.data 
+              const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
+              let matchedTemplate = routeTemplates.find(t => {
+                // 強化比對邏輯，去除空白並轉大寫
+                if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
+                  return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
+                }
+                if (typeof t.category === 'string' && t.category.trim() !== '') {
+                  return t.category.toUpperCase().trim() === orderCategory;
+                }
+                return false;
               });
-              updated++;
-            }
-          } else {
-            const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
-            let matchedTemplate = routeTemplates.find(t => {
-              // 💡 修正：強化比對邏輯，去除空白並轉大寫
-              if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
-                return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
+              
+              if (!matchedTemplate) {
+                matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
               }
-              if (typeof t.category === 'string' && t.category.trim() !== '') {
-                return t.category.toUpperCase().trim() === orderCategory;
+
+              if (!order.route || order.route.length === 0) {
+                if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+                  order.route = matchedTemplate.steps.slice();
+                  order.status = matchedTemplate.steps[0];
+                } else {
+                  order.route = statuses.slice();
+                  order.status = statuses[0];
+                }
               }
-              return false;
-            });
-            
-            if (!matchedTemplate) {
-              // Fallback 到沒有設定類別的通用模板
-              matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
+
+              if (!order.source) order.source = 'excel';
+
+              await setDocument('work_orders', order.id, order);
+              added++;
             }
-
-            if (!order.route || order.route.length === 0) {
-              if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
-                order.route = matchedTemplate.steps.slice();
-                order.status = matchedTemplate.steps[0];
-              } else {
-                order.route = statuses.slice();
-                order.status = statuses[0];
-              }
-            }
-
-            if (!order.source) order.source = 'excel';
-
-            await setDocument('work_orders', order.id, order);
-            added++;
           }
+          
+          let msg = isAuto ? '自動同步完成！' : '匯入完成！';
+          if (added > 0 || updated > 0 || diffCount > 0) {
+            msg += ` 新增 ${added}，更新 ${updated}`;
+            if (diffCount > 0) msg += `，比對不符 ${diffCount}`;
+            showToast(msg, 'success');
+          }
+          
+          resolve();
+          
+        } catch (error) {
+          console.error('[Import Error]', error);
+          if (!isAuto) showToast(`失敗: ${error.message}`, 'error');
+          resolve();
         }
-        
-        let msg = isAuto ? '自動同步完成！' : '匯入完成！';
-        msg += ` 新增 ${added}，更新 ${updated}`;
-        if (diffCount > 0) {
-          msg += `，其中 ${diffCount} 筆與手動輸入資料不符`;
-        }
-
-        showToast(msg, 'success');
-        
-      } catch (error) {
-        console.error('[Import Error]', error);
-        if (!isAuto) showToast(`失敗: ${error.message}`, 'error');
-      }
-    };
-    reader.readAsArrayBuffer(file);
+      };
+      reader.readAsArrayBuffer(file);
+    });
   },
 
   destroy() {
@@ -368,6 +380,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1793038000
+V: 1793048000
 W: UPGRADE-007
 */
