@@ -21,7 +21,7 @@ export default {
     }
 
     renderPageLayout({
-      title: '表單與資料設定',
+      title: '工單管理設定',
       subtitle: '管理系統欄位、視圖配置、表單佈局、公式與核對清單',
       headerActions: '',
       stats: [],
@@ -125,7 +125,7 @@ export default {
       <div class="flex justify-between items-center mb-6">
         <div>
           <h2 class="text-lg font-bold text-slate-800">表單佈局</h2>
-          <p class="text-sm text-slate-500 mt-1">決定「資料錄入」彈窗的排版方式。</p>
+          <p class="text-sm text-slate-500 mt-1">決定「工單編輯彈窗」的排版方式。</p>
         </div>
       </div>
 
@@ -175,7 +175,6 @@ export default {
   },
 
   renderNavConfig(container) {
-    // 若無資料則使用預設結構
     if (!currentSettings.nav_config || currentSettings.nav_config.length === 0) {
       currentSettings.nav_config = [
         { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true, isEnabled: true },
@@ -185,13 +184,12 @@ export default {
         { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
         { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
         { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
-        { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
-        { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'settings', label: '生產管理設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
+        { id: 'settings-form', label: '工單管理設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
         { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }
       ];
     }
 
-    // 確保所有 item 都有 isEnabled
     currentSettings.nav_config.forEach(item => {
       if (item.isEnabled === undefined) item.isEnabled = true;
     });
@@ -239,7 +237,6 @@ export default {
 
     createIcons({ icons: { Save, GripVertical }, attrs: { class: 'w-4 h-4' } });
 
-    // 初始化拖曳排序
     const navList = document.getElementById('nav-list');
     if (navList) {
       new Sortable(navList, {
@@ -256,7 +253,6 @@ export default {
       });
     }
 
-    // 綁定 Checkbox
     container.querySelectorAll('.nav-enabled-cb').forEach(cb => {
       cb.addEventListener('change', (e) => {
         const idx = parseInt(e.target.dataset.index);
@@ -403,6 +399,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-form.js
-V: 1793030000
+V: 1793057000
 W: UPGRADE-007
 */
