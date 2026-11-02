@@ -26,6 +26,14 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
     return '';
   };
 
+  // 輔助函數：將 materials 陣列轉為字串
+  const formatMaterials = (mats) => {
+    if (Array.isArray(mats) && mats.length > 0) {
+      return mats.map(m => `${m.name || '未知物料'} * ${m.qty || 0}`).join(', ');
+    }
+    return '';
+  };
+
   // 輔助函數：取得所有資料庫中出現的動態欄位 Key (用於「全部工單」)
   const getAllDataKeys = () => {
     const keys = new Set();
@@ -45,9 +53,10 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
       '狀態': order.status,
       '製程路線': formatRoute(order.route),
       '銷售員': (order.salesReps || []).join(', '),
-      '開單日期': order.uploadDate || '', // 💡 名詞替換
+      '開單日期': order.uploadDate || '',
       '交貨日期': order.dueDate || '',
       '狀態更新日': order.statusUpdateDate || '',
+      '工單物料': formatMaterials(order.materials), // 💡 新增物料摘要
       '來源': order.source === 'manual' ? '手動' : 'Excel',
       '核對狀態': order.diff ? '有差異' : '正常'
     };
@@ -84,10 +93,16 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
       { key: 'id', label: '工單號碼' },
       { key: 'status', label: '狀態' },
       { key: 'salesReps', label: '銷售員' },
-      { key: 'uploadDate', label: '開單日期' }, // 💡 名詞替換
-      { key: 'dueDate', label: '交貨日期' }
+      { key: 'uploadDate', label: '開單日期' },
+      { key: 'dueDate', label: '交貨日期' },
+      { key: 'materials', label: '工單物料' } // 💡 預設加入物料
     ];
     schema.filter(f => !f.isSystem).forEach(f => targetFields.push(f));
+  }
+
+  // 確保自訂匯出欄位中，如果有物料欄位，也能正確處理
+  if (!targetFields.some(f => f.key === 'materials')) {
+    targetFields.push({ key: 'materials', label: '工單物料' });
   }
 
   for (const status of statuses) {
@@ -105,11 +120,13 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
         } else if (f.key === 'salesReps') {
           row['銷售員'] = (order.salesReps || []).join(', ');
         } else if (f.key === 'uploadDate') {
-          row['開單日期'] = order.uploadDate || ''; // 💡 名詞替換
+          row['開單日期'] = order.uploadDate || '';
         } else if (f.key === 'dueDate') {
           row['交貨日期'] = order.dueDate || '';
         } else if (f.key === 'route') {
           row['製程路線'] = formatRoute(order.route);
+        } else if (f.key === 'materials') {
+          row['工單物料'] = formatMaterials(order.materials); // 💡 處理自訂欄位中的物料
         } else if (f.isSystem) {
           row[f.label] = order[f.key] || '';
         } else {
@@ -201,17 +218,27 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
       doc.text(salesRep, 70, yPos);
       doc.text(dueDate, 120, yPos);
 
-      // 如果有自訂欄位，可以在下方印出（避免版面太擠）
+      // 物料與自訂欄位，在下方印出（避免版面太擠）
       const customFields = schema.filter(f => !f.isSystem);
-      if (customFields.length > 0) {
+      
+      // 組合額外資訊（包含物料）
+      let extraInfoArr = [];
+      if (Array.isArray(order.materials) && order.materials.length > 0) {
+        const matStr = order.materials.map(m => `${m.name}*${m.qty}`).join(', ');
+        extraInfoArr.push(`物料: ${matStr}`);
+      }
+      customFields.forEach(f => {
+        const val = order.data && order.data[f.key] !== undefined ? order.data[f.key] : '-';
+        extraInfoArr.push(`${f.label}: ${val}`);
+      });
+
+      if (extraInfoArr.length > 0) {
         yPos += 5;
-        const extraInfo = customFields.map(f => {
-          const val = order.data && order.data[f.key] !== undefined ? order.data[f.key] : '-';
-          return `${f.label}: ${val}`;
-        }).join(' | ');
+        const extraInfo = extraInfoArr.join(' | ');
         doc.setFontSize(8);
         doc.setTextColor(100);
-        doc.text(extraInfo.substring(0, 100), 14, yPos);
+        // 限制字數避免超出邊界
+        doc.text(extraInfo.substring(0, 120), 14, yPos);
         doc.setFontSize(10);
         doc.setTextColor(0);
         yPos += 5; // 多佔用一行
@@ -227,6 +254,6 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
 
 /*
 F: AI-WA-UPWO/src/lib/io.js
-V: 1793051000
+V: 1793063000
 W: UPGRADE-007
 */
