@@ -1,4 +1,4 @@
-import { createIcons, Save, RotateCcw, Search, Plus, Layers, List, Columns } from 'lucide';
+import { createIcons, Save, RotateCcw } from 'lucide';
 import { showToast } from './toast.js';
 import { evaluate } from '../domain/formula-engine.js';
 
@@ -216,9 +216,9 @@ export function renderOrderEditor({
           finalData.route = matchedTemplate.steps;
         }
       } else {
-        // 若選自訂，則保留原本的路線 (如果是編輯模式)，或是給預設路線
+        // 若選自訂，則保留原本的路線 (如果是編輯模式)，或是留空交由 data-entry.js 處理
         if (!finalData.route) {
-           finalData.route = AppState.getStatuses() || []; // 這裡需要 AppState，但為避免依賴，可傳入或由 data-entry 處理
+           finalData.route = []; 
         }
       }
       
@@ -247,6 +247,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793025000
+V: 1793027000
 W: UPGRADE-007
 */
