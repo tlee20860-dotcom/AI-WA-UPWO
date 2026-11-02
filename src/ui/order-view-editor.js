@@ -3,9 +3,22 @@ import { getDocument, getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { openRouteBuilder } from './route-builder.js';
-import { openOrderModal } from './order-detail-modal.js'; // 💡 修正：改為 openOrderModal
+import { openOrderModal } from './order-detail-modal.js'; // 💡 引入新的彈窗
 import { AppState } from '../config/state.js';
 import { createIcons, GripVertical, Plus, X } from 'lucide';
+
+/**
+ * 輔助函式：將可能是字串或陣列的 route 統一轉為陣列
+ */
+function normalizeRoute(route) {
+  if (Array.isArray(route)) return route;
+  if (typeof route === 'string') {
+    if (route.includes(',')) return route.split(',').map(s => s.trim()).filter(Boolean);
+    if (route.includes('→')) return route.split('→').map(s => s.trim()).filter(Boolean);
+    return [route.trim()];
+  }
+  return [];
+}
 
 /**
  * 取得工單類別 (優先從 data.category，其次從工單號前兩碼)
@@ -43,8 +56,6 @@ window.addEventListener('inline-edit', async (e) => {
     if (docSnap && docSnap.diff && docSnap.diff[key]) {
       const newDiff = Object.assign({}, docSnap.diff);
       delete newDiff[key];
-      
-      // 更新 diff 欄位（若為空則傳入空物件，UI 會自動忽略）
       updateData['diff'] = newDiff;
     }
 
@@ -77,7 +88,10 @@ window.addEventListener('change-route', async (e) => {
     const orderDoc = await getDocument('work_orders', id);
     if (!orderDoc) return;
 
+    // 💡 修正：先正規化當前路線再比對狀態
+    const currentRoute = normalizeRoute(orderDoc.route);
     let newStatus = orderDoc.status;
+    
     // 如果新流程不包含當前狀態，則退回第一步
     if (!template.steps.includes(newStatus)) {
       newStatus = template.steps[0];
@@ -161,10 +175,15 @@ document.addEventListener('click', async (e) => {
       const settingsDoc = await getDocument('settings', 'main');
       
       if (settingsDoc) {
-        // 💡 改用新的 openOrderModal，傳入 orderId
+        // 💡 呼叫新的彈窗，傳入 orderId 與設定
         openOrderModal({
           orderId: id,
-          currentSettings: settingsDoc
+          currentSettings: settingsDoc,
+          onSaved: () => {
+            // 儲存後觸發當前頁面刷新
+            const pageKey = window.location.hash.replace('#', '') || 'table';
+            window.dispatchEvent(new Event(`refresh-${pageKey}`));
+          }
         });
       }
     } catch (err) {
@@ -225,7 +244,7 @@ document.addEventListener('click', async (e) => {
     
     let currentRoute = [];
     try {
-      currentRoute = JSON.parse(routeStr);
+      currentRoute = normalizeRoute(JSON.parse(routeStr));
     } catch (e) {
       currentRoute = [];
     }
@@ -413,7 +432,7 @@ document.addEventListener('click', async (e) => {
       } catch (err) {
         console.error(err);
         showToast('更新失敗，請稍後再試', 'error');
-        confirmBtn.disabled = false;
+        confirmBtn.disabled = true;
         confirmBtn.textContent = '儲存';
       }
     });
@@ -423,6 +442,6 @@ document.addEventListener('click', async (e) => {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1793035000
+V: 1793036000
 W: UPGRADE-007
 */
