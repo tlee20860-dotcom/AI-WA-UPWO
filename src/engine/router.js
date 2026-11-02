@@ -9,11 +9,12 @@ import TablePage from '../pages/table.js';
 import OverviewPage from '../pages/overview.js';
 import SalespersonPage from '../pages/salesperson.js';
 import SettingsPage from '../pages/settings.js';
+import SettingsFormPage from '../pages/settings-form.js'; // 💡 新增
 import CategoryPage from '../pages/category.js';
 import AdminDataPage from '../pages/admin-data.js';
 import AreaPage from '../pages/area.js';
 import DataEntryPage from '../pages/data-entry.js';
-import SearchPage from '../pages/search.js'; // 💡 新增
+import SearchPage from '../pages/search.js';
 
 const routes = {
   login: LoginPage,
@@ -22,11 +23,12 @@ const routes = {
   overview: OverviewPage,
   salesperson: SalespersonPage,
   settings: SettingsPage,
+  'settings-form': SettingsFormPage, // 💡 新增路由
   category: CategoryPage,
   'admin-data': AdminDataPage,
   area: AreaPage,
   'data-entry': DataEntryPage,
-  search: SearchPage // 💡 新增路由
+  search: SearchPage
 };
 
 let currentPageInstance = null;
@@ -69,8 +71,8 @@ function handleRoute() {
       return;
     }
 
-    // 一般使用者 (viewer)：不能進入系統設定、資料總管與資料錄入
-    if (role === 'viewer' && (hash === 'settings' || hash === 'admin-data' || hash === 'data-entry')) {
+    // 一般使用者 (viewer)：不能進入系統設定、表單設定、資料總管與資料錄入
+    if (role === 'viewer' && (hash === 'settings' || hash === 'settings-form' || hash === 'admin-data' || hash === 'data-entry')) {
       showToast('您沒有權限訪問此頁面', 'error');
       window.location.hash = '#kanban';
       return;
@@ -152,6 +154,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1793006000
+V: 1793010000
 W: UPGRADE-007
 */
