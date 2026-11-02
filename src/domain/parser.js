@@ -47,6 +47,15 @@ function formatExcelDate(val) {
   
   // 如果已經是正常的日期字串 (包含 - 或 /)
   if (typeof val === 'string' && (val.includes('-') || val.includes('/'))) {
+    // 簡單處理 YYYY/MM/DD -> YYYY-MM-DD
+    if (val.includes('/')) {
+      const parts = val.split('/');
+      if (parts.length === 3) {
+        // 假設年份是4位數
+        if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+        if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+      }
+    }
     return val.trim();
   }
 
@@ -66,7 +75,7 @@ function formatExcelDate(val) {
 }
 
 /**
- * 解析 Excel 匯入的資料列（動態 Schema 版）
+ * 解析 Excel 匯入的資料列（動態 Schema + 核心欄位對齊版）
  * @param {Array<string>} headers Excel 第一列的標題
  * @param {Array<Array<any>>} rows Excel 的資料列（不含標題）
  * @param {Array} salesMapping 銷售員對照表
@@ -91,9 +100,36 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 2. 檢查必要的系統核心欄位是否存在
-  if (columnMap['id'] === undefined) {
-    throw new Error('找不到「工單號碼 (發票)」欄位，請確認 Excel 表頭或欄位設定。');
+  // 💡 核心欄位別名映射表 (用於識別匯出的 Excel)
+  const coreAliases = {
+    id: ['工單號碼', '單號', '發票', 'id'],
+    status: ['狀態', '生產進度', 'status'],
+    route: ['製程路線', 'route'],
+    dueDate: ['交貨日期', '交貨日', 'dueDate'],
+    uploadDate: ['上傳日期', '開單日期', '日期', 'uploadDate'],
+    salesReps: ['銷售員', 'salesRep', 'salesReps'],
+    source: ['來源', 'source']
+  };
+
+  // 找出核心欄位在 Excel 中的索引
+  const coreIndices = {};
+  Object.keys(coreAliases).forEach(key => {
+    const aliases = coreAliases[key];
+    const idx = cleanHeaders.findIndex(h => aliases.includes(h));
+    if (idx !== -1) {
+      coreIndices[key] = idx;
+    }
+  });
+
+  // 檢查必要的系統核心欄位是否存在 (優先找 id，若無則找「單號」)
+  let idIdx = coreIndices['id'];
+  if (idIdx === undefined) {
+    idIdx = columnMap['id'];
+    if (idIdx !== undefined) coreIndices['id'] = idIdx;
+  }
+
+  if (idIdx === undefined) {
+    throw new Error('找不到「工單號碼」或「單號」欄位，請確認 Excel 表頭或欄位設定。');
   }
 
   // 3. 逐列解析
@@ -101,7 +137,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     // 跳過完全空白的列（防呆）
     if (!row || row.length === 0) continue;
 
-    const rawIdVal = row[columnMap['id']];
+    const rawIdVal = row[coreIndices['id']];
     const orderId = rawIdVal !== undefined && rawIdVal !== null ? String(rawIdVal).trim() : "";
     
     // 💡 核心邏輯：遇到 A 欄（工單號碼）為空，直接中斷迴圈（完美剔除尾部的總計與備註）
@@ -109,29 +145,64 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       break;
     }
 
-    // 解析日期（轉換 Excel 序列號）
-    let uploadDate = nowStr;
-    if (columnMap['uploadDate'] !== undefined && row[columnMap['uploadDate']] !== undefined) {
-      uploadDate = formatExcelDate(row[columnMap['uploadDate']]);
+    // --- 解析核心欄位 ---
+    
+    // 狀態 (status)
+    let status = defaultStatus;
+    if (coreIndices['status'] !== undefined && row[coreIndices['status']] !== undefined) {
+      const val = String(row[coreIndices['status']]).trim();
+      if (val) status = val;
     }
 
-    // 解析銷售員
+    // 製程路線 (route) - 從 "A → B → C" 轉回陣列
+    let route = [];
+    if (coreIndices['route'] !== undefined && row[coreIndices['route']] !== undefined) {
+      const val = String(row[coreIndices['route']]).trim();
+      if (val) {
+        route = val.split('→').map(s => s.trim()).filter(Boolean);
+      }
+    }
+
+    // 交貨日期 (dueDate)
+    let dueDate = "";
+    if (coreIndices['dueDate'] !== undefined && row[coreIndices['dueDate']] !== undefined) {
+      dueDate = formatExcelDate(row[coreIndices['dueDate']]);
+    }
+
+    // 上傳/開單日期 (uploadDate)
+    let uploadDate = nowStr.split('T')[0];
+    if (coreIndices['uploadDate'] !== undefined && row[coreIndices['uploadDate']] !== undefined) {
+      const formatted = formatExcelDate(row[coreIndices['uploadDate']]);
+      if (formatted) uploadDate = formatted;
+    }
+
+    // 來源 (source)
+    let source = "excel";
+    if (coreIndices['source'] !== undefined && row[coreIndices['source']] !== undefined) {
+      const val = String(row[coreIndices['source']]).trim();
+      if (val === '手動' || val === 'manual') source = 'manual';
+    }
+
+    // 銷售員 (salesReps)
     let rawSalesRep = "";
-    if (columnMap['salesRep'] !== undefined && row[columnMap['salesRep']] !== undefined) {
+    if (coreIndices['salesReps'] !== undefined && row[coreIndices['salesReps']] !== undefined) {
+      rawSalesRep = String(row[coreIndices['salesReps']]);
+    } else if (columnMap['salesRep'] !== undefined && row[columnMap['salesRep']] !== undefined) {
       rawSalesRep = String(row[columnMap['salesRep']]);
     }
     const normalizedReps = normalizeSalesRep(rawSalesRep, salesMapping);
 
-    // 收集動態欄位資料 (非系統核心欄位)
+
+    // --- 收集動態欄位資料 ---
     const data = {};
     
-    // 💡 自動擷取工單號前兩碼英文作為類別
+    // 💡 自動擷取工單號前兩碼英文作為類別 (若資料中沒有設定 category)
     const categoryMatch = orderId.match(/^[a-zA-Z]+/);
     data['category'] = categoryMatch ? categoryMatch[0].toUpperCase() : '其他';
 
     schema.forEach(field => {
-      // 排除系統核心欄位 (id, uploadDate, salesRep 等)
-      if (!field.isSystem && columnMap[field.key] !== undefined) {
+      // 排除系統核心欄位與 id
+      if (!field.isSystem && field.key !== 'id' && columnMap[field.key] !== undefined) {
         const val = row[columnMap[field.key]];
         data[field.key] = val !== undefined && val !== null ? val : "";
       }
@@ -139,20 +210,22 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
     parsedOrders.push({
       id: orderId,
-      status: defaultStatus,
+      status: status,
+      route: route,
       salesReps: normalizedReps,
       uploadDate: uploadDate,
       statusUpdateDate: nowStr.split('T')[0], // 狀態更新日預設為今天
-      dueDate: "", // 交期依需求為匯入後手動輸入
-      data: data   // 動態欄位資料
+      dueDate: dueDate,
+      source: source,
+      data: data
     });
   }
 
   return parsedOrders;
 }
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1792911500
-W: UPGRADE-002
-═══ */
+V: 1793014000
+W: UPGRADE-007
+*/
