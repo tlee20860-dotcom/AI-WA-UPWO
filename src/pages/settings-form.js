@@ -1,15 +1,15 @@
 import { AppState } from '../config/state.js';
 import { listenDocument } from '../db/read.js';
-import { setDocument } from '../db/write.js';
+import { setDocument, updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
-import { createIcons, LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2 } from 'lucide';
+import { createIcons, LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2, Menu, GripVertical, Settings } from 'lucide';
 
 // 引入拆分出去的模組
 import { renderSchema, renderViewConfig } from './settings-schema.js';
 
 let unsubscribe = null;
-export let currentSettings = { schema: [], view_configs: {}, form_layout: 'B', formulas: {}, diff_fields: ['amount'] };
+export let currentSettings = { schema: [], view_configs: {}, form_layout: 'B', formulas: {}, diff_fields: ['amount'], nav_config: [] };
 let activeTab = 'layout';
 
 export default {
@@ -41,7 +41,8 @@ export default {
           view_configs: data.view_configs || {},
           form_layout: data.form_layout || 'B',
           formulas: data.formulas || {},
-          diff_fields: Array.isArray(data.diff_fields) ? data.diff_fields : ['amount']
+          diff_fields: Array.isArray(data.diff_fields) ? data.diff_fields : ['amount'],
+          nav_config: Array.isArray(data.nav_config) ? data.nav_config : []
         };
       }
       this.renderTabs();
@@ -65,6 +66,9 @@ export default {
           <button class="tab-btn ${activeTab === 'view_config' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="view_config">
             <i data-lucide="layout" class="w-4 h-4"></i> 視圖配置
           </button>
+          <button class="tab-btn ${activeTab === 'nav_config' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="nav_config">
+            <i data-lucide="menu" class="w-4 h-4"></i> 導覽選單
+          </button>
           <button class="tab-btn ${activeTab === 'formulas' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="formulas">
             <i data-lucide="function-square" class="w-4 h-4"></i> 公式設定
           </button>
@@ -78,7 +82,7 @@ export default {
     `;
 
     createIcons({
-      icons: { LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2 },
+      icons: { LayoutDashboard, List, FileEdit, FunctionSquare, CheckSquare, Save, Plus, Trash2, Menu, GripVertical, Settings },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -105,6 +109,8 @@ export default {
       renderSchema(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'view_config') {
       renderViewConfig(content, currentSettings, this.saveSettings.bind(this));
+    } else if (activeTab === 'nav_config') {
+      this.renderNavConfig(content);
     } else if (activeTab === 'formulas') {
       this.renderFormulas(content);
     } else if (activeTab === 'diff_fields') {
@@ -165,6 +171,103 @@ export default {
         await this.saveSettings();
         showToast('佈局設定已儲存', 'success');
       }
+    });
+  },
+
+  renderNavConfig(container) {
+    // 若無資料則使用預設結構
+    if (!currentSettings.nav_config || currentSettings.nav_config.length === 0) {
+      currentSettings.nav_config = [
+        { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true },
+        { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false },
+        { id: 'data-entry', label: '資料錄入', icon: 'file-edit', showSidebar: true, showTop: false },
+        { id: 'table', label: '管理總表', icon: 'table', showSidebar: true, showTop: true },
+        { id: 'overview', label: '總狀態', icon: 'pie-chart', showSidebar: true, showTop: true },
+        { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true },
+        { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true },
+        { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false },
+        { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false },
+        { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false },
+        { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false }
+      ];
+    }
+
+    container.innerHTML = `
+      <div class="flex justify-between items-center mb-6">
+        <div>
+          <h2 class="text-lg font-bold text-slate-800">導覽選單配置</h2>
+          <p class="text-sm text-slate-500 mt-1">可拖曳排序。勾選決定該頁面是否顯示於左側選單或頂部快速切換。</p>
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2" id="nav-list">
+        ${currentSettings.nav_config.map((item, index) => `
+          <div class="flex items-center gap-4 bg-white p-3 rounded-xl border border-slate-200 shadow-sm nav-item" data-index="${index}">
+            <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300 cursor-grab"></i>
+            <div class="flex-1 font-bold text-slate-700">${item.label}</div>
+            <div class="flex items-center gap-6 mr-4">
+              <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+                <input type="checkbox" class="nav-sidebar-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-index="${index}" ${item.showSidebar ? 'checked' : ''}>
+                顯示於側欄
+              </label>
+              <label class="flex items-center gap-2 cursor-pointer text-sm text-slate-600">
+                <input type="checkbox" class="nav-top-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" data-index="${index}" ${item.showTop ? 'checked' : ''}>
+                顯示於頂部
+              </label>
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <div class="mt-8 flex justify-end">
+        <button id="btn-save-nav" class="btn-primary px-6 py-2.5 rounded-xl text-sm font-medium flex items-center gap-2">
+          <i data-lucide="save" class="w-4 h-4"></i> 儲存導覽設定
+        </button>
+      </div>
+    `;
+
+    createIcons({ icons: { Save, GripVertical }, attrs: { class: 'w-4 h-4' } });
+
+    // 初始化拖曳排序
+    const navList = document.getElementById('nav-list');
+    if (navList) {
+      new Sortable(navList, {
+        animation: 150,
+        handle: '.cursor-grab',
+        ghostClass: 'opacity-50',
+        onEnd: () => {
+          // 拖曳結束後，將 DOM 順序寫回 currentSettings.nav_config
+          const newOrderIndexes = Array.from(navList.children).map(el => parseInt(el.dataset.index));
+          const newConfig = newOrderIndexes.map(i => currentSettings.nav_config[i]);
+          currentSettings.nav_config = newConfig;
+          
+          // 重新渲染以更新 data-index
+          this.renderNavConfig(container);
+          showToast('順序已更新，請點擊儲存', 'info');
+        }
+      });
+    }
+
+    // 處理 Checkbox 變更
+    container.querySelectorAll('.nav-sidebar-cb').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.index);
+        currentSettings.nav_config[idx].showSidebar = e.target.checked;
+      });
+    });
+
+    container.querySelectorAll('.nav-top-cb').forEach(cb => {
+      cb.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.dataset.index);
+        currentSettings.nav_config[idx].showTop = e.target.checked;
+      });
+    });
+
+    document.getElementById('btn-save-nav')?.addEventListener('click', async () => {
+      await this.saveSettings();
+      // 通知 App 刷新導覽列 (main.js 會監聽 settings-updated 並觸發 nav-config-updated)
+      window.dispatchEvent(new Event('nav-config-updated'));
+      showToast('導覽設定已儲存', 'success');
     });
   },
 
@@ -275,9 +378,11 @@ export default {
       view_configs: currentSettings.view_configs,
       form_layout: currentSettings.form_layout,
       formulas: currentSettings.formulas,
-      diff_fields: currentSettings.diff_fields
+      diff_fields: currentSettings.diff_fields,
+      nav_config: currentSettings.nav_config
     };
     await setDocument('settings', 'main', dataToSave);
+    // 這裡不重新渲染，避免拖曳後因為重新渲染導致畫面閃爍。由各儲存按鈕自行決定是否刷新。
   },
 
   destroy() {
@@ -290,6 +395,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-form.js
-V: 1793008000
+V: 1793022000
 W: UPGRADE-007
 */
