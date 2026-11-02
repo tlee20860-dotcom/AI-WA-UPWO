@@ -1,19 +1,147 @@
 import { AppState } from '../config/state.js';
 import { renderAppShell, updateNavbar } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
+import { getDocument } from '../db/read.js';
+import { updateDocument } from '../db/write.js';
+import { renderPageLayout } from '../ui/layout.js';
 
+// 引入各頁面模組
 import LoginPage from '../pages/login.js';
 import KanbanPage from '../pages/kanban.js';
 import TablePage from '../pages/table.js';
 import OverviewPage from '../pages/overview.js';
 import SalespersonPage from '../pages/salesperson.js';
-import SettingsPage from '../pages/settings.js';
-import SettingsFormPage from '../pages/settings-form.js';
 import CategoryPage from '../pages/category.js';
 import AdminDataPage from '../pages/admin-data.js';
 import AreaPage from '../pages/area.js';
-import DataEntryPage from '../pages/data-entry.js'; // 保留以防舊網址
 import SearchPage from '../pages/search.js';
+
+// 引入四大設定中心
+import SettingsPage from '../pages/settings.js';
+import SettingsFormPage from '../pages/settings-form.js';
+
+// 引入物料與系統管理的子渲染函數
+import { renderMaterials } from '../pages/settings-material.js';
+import { renderSystemUsers, renderSystemData } from '../pages/settings-system.js';
+
+// 💡 將物料與系統管理包裝成標準 Page 模組
+const SettingsMaterialPage = {
+  async render() {
+    const user = AppState.getUser();
+    if (!user || user.role !== 'admin') {
+      document.getElementById('app-content').innerHTML = '<div class="p-8 text-center text-rose-500 font-bold">您沒有權限訪問此頁面</div>';
+      return;
+    }
+    
+    let currentSettings = {};
+    try {
+      currentSettings = await getDocument('settings', 'main') || {};
+    } catch(e) {}
+    
+    renderPageLayout({
+      title: '物料管理設定',
+      subtitle: '管理物料主檔、自訂欄位與詳細資料',
+      headerActions: '',
+      stats: [],
+      controls: '',
+      listContainerId: 'settings-material-container'
+    });
+
+    const container = document.getElementById('settings-material-container');
+    
+    // 傳入儲存函數，僅更新物料相關欄位，保護原有資料
+    const saveSettings = async (dataToSave) => {
+      await updateDocument('settings', 'main', dataToSave);
+      // 重新載入資料並刷新畫面
+      const updated = await getDocument('settings', 'main');
+      renderMaterials(container, updated || {}, saveSettings);
+    };
+
+    renderMaterials(container, currentSettings, saveSettings);
+  }
+};
+
+const SettingsSystemPage = {
+  async render() {
+    const user = AppState.getUser();
+    if (!user || user.role !== 'admin') {
+      document.getElementById('app-content').innerHTML = '<div class="p-8 text-center text-rose-500 font-bold">您沒有權限訪問此頁面</div>';
+      return;
+    }
+    
+    let currentSettings = {};
+    try {
+      currentSettings = await getDocument('settings', 'main') || {};
+    } catch(e) {}
+
+    // 獲取銷售員名單供權限設定使用
+    let allSalesReps = [];
+    try {
+      const { getCollection } = await import('../db/read.js');
+      const orders = await getCollection('work_orders');
+      const reps = new Set();
+      orders.forEach(o => (o.salesReps || []).forEach(r => { if(r && r !== '未填寫') reps.add(r); }));
+      allSalesReps = Array.from(reps).sort();
+    } catch(e) {}
+    
+    renderPageLayout({
+      title: '系統管理設定',
+      subtitle: '管理登入帳號權限與系統資料',
+      headerActions: '',
+      stats: [],
+      controls: '',
+      listContainerId: 'settings-system-container'
+    });
+
+    const container = document.getElementById('settings-system-container');
+    container.innerHTML = `
+      <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden min-h-[500px] flex flex-col md:flex-row">
+        <div class="w-full md:w-64 border-r border-slate-100 bg-slate-50/50 p-4 flex flex-col gap-1 flex-shrink-0">
+          <button id="tab-sys-users" class="bg-white text-brand shadow-sm border border-slate-200/50 text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3">
+            <i data-lucide="shield" class="w-4 h-4"></i> 帳號管理
+          </button>
+          <button id="tab-sys-data" class="text-slate-600 hover:bg-slate-100 border border-transparent text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3">
+            <i data-lucide="database" class="w-4 h-4"></i> 資料管理
+          </button>
+        </div>
+        <div class="flex-1 p-6 md:p-8" id="sys-content"></div>
+      </div>
+    `;
+
+    const contentEl = container.querySelector('#sys-content');
+    const btnUsers = container.querySelector('#tab-sys-users');
+    const btnData = container.querySelector('#tab-sys-data');
+
+    const saveSettings = async (dataToSave) => {
+      await updateDocument('settings', 'main', dataToSave);
+      const updated = await getDocument('settings', 'main');
+      currentSettings = updated || {};
+    };
+
+    const renderUsers = () => {
+      btnUsers.className = 'bg-white text-brand shadow-sm border border-slate-200/50 text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3';
+      btnData.className = 'text-slate-600 hover:bg-slate-100 border border-transparent text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3';
+      renderSystemUsers(contentEl, currentSettings, saveSettings, allSalesReps);
+    };
+
+    const renderData = () => {
+      btnData.className = 'bg-white text-brand shadow-sm border border-slate-200/50 text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3';
+      btnUsers.className = 'text-slate-600 hover:bg-slate-100 border border-transparent text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3';
+      renderSystemData(contentEl, currentSettings, saveSettings);
+    };
+
+    btnUsers.addEventListener('click', renderUsers);
+    btnData.addEventListener('click', renderData);
+
+    // 預設顯示帳號管理
+    renderUsers();
+    
+    // 渲染圖示
+    import('lucide').then(({ createIcons, Shield, Database }) => {
+      createIcons({ icons: { Shield, Database }, attrs: { class: 'w-4 h-4' } });
+    });
+  }
+};
 
 const routes = {
   login: LoginPage,
@@ -21,13 +149,14 @@ const routes = {
   table: TablePage,
   overview: OverviewPage,
   salesperson: SalespersonPage,
-  settings: SettingsPage,
-  'settings-form': SettingsFormPage,
   category: CategoryPage,
   'admin-data': AdminDataPage,
   area: AreaPage,
-  'data-entry': DataEntryPage,
-  search: SearchPage
+  search: SearchPage,
+  settings: SettingsPage,
+  'settings-form': SettingsFormPage,
+  'settings-material': SettingsMaterialPage,
+  'settings-system': SettingsSystemPage
 };
 
 let currentPageInstance = null;
@@ -62,19 +191,21 @@ function handleRoute() {
       return;
     }
 
-    if (role === 'viewer' && (hash === 'settings' || hash === 'settings-form' || hash === 'admin-data' || hash === 'data-entry')) {
+    // 一般使用者不能進入設定相關頁面
+    const isSettingsPage = ['settings', 'settings-form', 'settings-material', 'settings-system', 'admin-data'].includes(hash);
+    if (role === 'viewer' && isSettingsPage) {
       showToast('您沒有權限訪問此頁面', 'error');
       window.location.hash = '#kanban';
       return;
     }
 
-    // 💡 路由守衛：攔截已停用的頁面
+    // 路由守衛：攔截已停用的頁面
     const navConfig = AppState.getNavConfig();
     if (navConfig) {
       const routeConfig = navConfig.find(r => r.id === hash);
       if (routeConfig && routeConfig.isEnabled === false) {
         showToast('該頁面已被停用', 'error');
-        window.location.hash = '#table'; // 踢回總表
+        window.location.hash = '#table';
         return;
       }
     }
@@ -140,6 +271,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1793032000
+V: 1793058000
 W: UPGRADE-007
 */
