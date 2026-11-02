@@ -75,9 +75,9 @@ function formatExcelDate(val) {
 }
 
 /**
- * 解析 Excel 匯入的資料列（動態 Schema + 核心欄位對齊版）
- * @param {Array<string>} headers Excel 第一列的標題
- * @param {Array<Array<any>>} rows Excel 的資料列（不含標題）
+ * 解析 Excel 匯入的資料列（自動偵測表頭 + 動態 Schema）
+ * @param {Array<string>} headers Excel 第一列的標題 (可能不是真正的表頭)
+ * @param {Array<Array<any>>} rows Excel 的資料列（不含第一列）
  * @param {Array} salesMapping 銷售員對照表
  * @param {string} defaultStatus 預設狀態 (如 "排產中")
  * @param {Array} schema 系統欄位定義
@@ -87,9 +87,31 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   const nowStr = new Date().toISOString();
   const parsedOrders = [];
 
-  // 1. 建立表頭索引映射：強制清洗表頭的空白、換行與全形空白
+  const allData = [headers, ...rows];
+
+  // 1. 自動偵測表頭行數 (掃描前 20 行，尋找包含「單號」、「發票」、「工單號碼」、「登錄」的行)
+  const idKeywords = ['單號', '發票', '工單號碼', '登錄'];
+  let headerIdx = -1;
+  for (let i = 0; i < Math.min(allData.length, 20); i++) {
+    const row = allData[i];
+    if (!row) continue;
+    const cleanRow = row.map(c => String(c || '').replace(/[\s\u3000]+/g, '').trim());
+    if (cleanRow.some(cell => idKeywords.includes(cell))) {
+      headerIdx = i;
+      break;
+    }
+  }
+
+  if (headerIdx === -1) {
+    throw new Error('找不到表頭，請確認 Excel 中包含「單號」、「登錄」或「發票」等欄位。');
+  }
+
+  const actualHeaders = allData[headerIdx];
+  const dataRows = allData.slice(headerIdx + 1);
+
+  // 2. 建立表頭索引映射：強制清洗表頭的空白、換行與全形空白
   const cleanStr = (s) => String(s || '').replace(/[\s\u3000]+/g, '').trim();
-  const cleanHeaders = headers.map(cleanStr);
+  const cleanHeaders = actualHeaders.map(cleanStr);
 
   const columnMap = {};
   schema.forEach(field => {
@@ -100,14 +122,14 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 💡 核心欄位別名映射表 (用於識別匯出的 Excel)
+  // 💡 核心欄位別名映射表 (用於識別匯出的 Excel 或公司系統報表)
   const coreAliases = {
-    id: ['工單號碼', '單號', '發票', 'id'],
+    id: ['工單號碼', '單號', '發票', 'id', '登錄'],
     status: ['狀態', '生產進度', 'status'],
     route: ['製程路線', 'route'],
-    dueDate: ['交貨日期', '交貨日', 'dueDate'],
+    dueDate: ['交貨日期', '交貨日', '預計日期', 'dueDate'],
     uploadDate: ['上傳日期', '開單日期', '日期', 'uploadDate'],
-    salesReps: ['銷售員', 'salesRep', 'salesReps'],
+    salesReps: ['銷售員', 'salesRep', 'salesReps', '我方備考'],
     source: ['來源', 'source']
   };
 
@@ -121,7 +143,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 檢查必要的系統核心欄位是否存在 (優先找 id，若無則找「單號」)
+  // 檢查必要的系統核心欄位是否存在
   let idIdx = coreIndices['id'];
   if (idIdx === undefined) {
     idIdx = columnMap['id'];
@@ -129,11 +151,11 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   }
 
   if (idIdx === undefined) {
-    throw new Error('找不到「工單號碼」或「單號」欄位，請確認 Excel 表頭或欄位設定。');
+    throw new Error('找不到「工單號碼」、「單號」或「登錄」欄位，請確認 Excel 表頭。');
   }
 
   // 3. 逐列解析
-  for (const row of rows) {
+  for (const row of dataRows) {
     // 跳過完全空白的列（防呆）
     if (!row || row.length === 0) continue;
 
@@ -226,6 +248,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
 /*
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1793014000
+V: 1793047000
 W: UPGRADE-007
 */
