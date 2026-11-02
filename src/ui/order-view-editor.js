@@ -38,6 +38,16 @@ window.addEventListener('inline-edit', async (e) => {
       updateData[`data.${key}`] = value;
     }
 
+    // 💡 清除差異標記
+    const docSnap = await getDocument('work_orders', id);
+    if (docSnap && docSnap.diff && docSnap.diff[key]) {
+      const newDiff = Object.assign({}, docSnap.diff);
+      delete newDiff[key];
+      
+      // 更新 diff 欄位（若為空則傳入空物件，UI 會自動忽略）
+      updateData['diff'] = newDiff;
+    }
+
     await updateDocument('work_orders', id, updateData);
     showToast(`已更新資料`, 'success');
     
@@ -413,6 +423,6 @@ document.addEventListener('click', async (e) => {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1792971000
-W: UPGRADE-005
+V: 1793003000
+W: UPGRADE-007
 */
