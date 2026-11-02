@@ -1,4 +1,4 @@
-import { createIcons, Save, RotateCcw } from 'lucide';
+import { createIcons, Save, RotateCcw, Plus, Trash2 } from 'lucide';
 import { showToast } from './toast.js';
 import { evaluate } from '../domain/formula-engine.js';
 
@@ -25,6 +25,7 @@ export function renderOrderEditor({
   formulas, 
   viewConfig, 
   routeTemplates = [],
+  materials = [], // 💡 接收物料主檔
   layoutMode = 'B', 
   initialData = null, 
   isViewMode = false,
@@ -41,7 +42,7 @@ export function renderOrderEditor({
     displayFields = schema.filter(f => f.isEditable);
   }
 
-  // 💡 名詞替換：若欄位為 route，強制覆寫 Label
+  // 名詞替換：若欄位為 route，強制覆寫 Label
   displayFields = displayFields.map(f => {
     if (f.key === 'route') {
       return Object.assign({}, f, { label: '製程路線圖' });
@@ -64,6 +65,16 @@ export function renderOrderEditor({
       formData[f.key] = '';
     }
   });
+
+  // 準備工單物料資料
+  let currentMaterials = Array.isArray(initialData?.materials) ? JSON.parse(JSON.stringify(initialData.materials)) : [];
+  
+  // 取得當前工單類別，用於過濾物料
+  const getOrderCategory = () => {
+    return (initialData && initialData.data && initialData.data.category) 
+      ? String(initialData.data.category).toUpperCase() 
+      : (formData['id'] ? String(formData['id']).match(/^[a-zA-Z]+/)?.[0]?.toUpperCase() : '其他') || '其他';
+  };
 
   // 3. 繪製 HTML
   let html = `
@@ -92,10 +103,7 @@ export function renderOrderEditor({
             
             // 特殊處理：製程路線圖 (route) 渲染為下拉選單
             if (f.key === 'route') {
-              // 取得工單類別
-              const orderCategory = (initialData && initialData.data && initialData.data.category) 
-                ? String(initialData.data.category).toUpperCase() 
-                : (formData['id'] ? String(formData['id']).match(/^[a-zA-Z]+/)?.[0]?.toUpperCase() : '其他') || '其他';
+              const orderCategory = getOrderCategory();
 
               // 嚴格過濾符合該類別的模板
               const availableTemplates = routeTemplates.filter(t => {
@@ -146,16 +154,132 @@ export function renderOrderEditor({
             `;
           }).join('')}
         </div>
+
+        <!-- 💡 工單物料明細區塊 -->
+        <div class="mt-8 border-t border-slate-200 pt-6">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-bold text-slate-800">工單物料明細</h3>
+            ${!isViewMode ? `
+              <button id="btn-add-material" class="text-sm text-brand hover:text-brand-hover font-medium flex items-center gap-1">
+                <i data-lucide="plus" class="w-4 h-4"></i> 新增物料
+              </button>
+            ` : ''}
+          </div>
+          
+          <div class="overflow-x-auto w-full">
+            <table class="w-full text-left border-collapse min-w-[500px]" id="material-table">
+              <thead>
+                <tr class="border-b border-slate-200 text-sm text-slate-500">
+                  <th class="pb-2 font-medium">物料名稱</th>
+                  <th class="pb-2 font-medium w-24">數量</th>
+                  <th class="pb-2 font-medium">備註</th>
+                  ${!isViewMode ? `<th class="pb-2 w-12"></th>` : ''}
+                </tr>
+              </thead>
+              <tbody id="material-tbody">
+                <!-- 由 JS 渲染 -->
+              </tbody>
+            </table>
+            <div id="material-empty" class="text-center text-slate-400 text-sm py-4 hidden">尚未新增任何物料</div>
+          </div>
+        </div>
       </div>
     </div>
   `;
 
   container.innerHTML = html;
-  createIcons({ icons: { Save, RotateCcw }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { Save, RotateCcw, Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
 
-  // 4. 綁定事件
+  // 4. 物料渲染與事件綁定
+  const tbody = container.querySelector('#material-tbody');
+  const emptyMsg = container.querySelector('#material-empty');
+
+  const renderMaterialsTable = () => {
+    if (currentMaterials.length === 0) {
+      tbody.innerHTML = '';
+      emptyMsg.classList.remove('hidden');
+      return;
+    }
+    emptyMsg.classList.add('hidden');
+
+    const orderCategory = getOrderCategory();
+
+    tbody.innerHTML = currentMaterials.map((mat, idx) => {
+      // 過濾符合類別的物料
+      const availableMaterials = materials.filter(m => {
+        if (!m.categories || m.categories.length === 0) return true;
+        return m.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
+      });
+
+      return `
+        <tr class="border-b border-slate-100 last:border-0" data-index="${idx}">
+          <td class="py-2 pr-2">
+            <select class="mat-name-select w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" ${isViewMode ? 'disabled' : ''}>
+              <option value="">請選擇物料</option>
+              ${availableMaterials.map(m => `<option value="${m.id}" ${mat.materialId === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
+            </select>
+          </td>
+          <td class="py-2 pr-2">
+            <input type="number" class="mat-qty-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${mat.qty || ''}" placeholder="0" ${isViewMode ? 'disabled' : ''}>
+          </td>
+          <td class="py-2 pr-2">
+            <input type="text" class="mat-note-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${mat.note || ''}" placeholder="選填" ${isViewMode ? 'disabled' : ''}>
+          </td>
+          ${!isViewMode ? `
+          <td class="py-2 text-center">
+            <button class="btn-del-mat text-slate-400 hover:text-rose-500 p-1" data-index="${idx}">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </td>
+          ` : ''}
+        </tr>
+      `;
+    }).join('');
+
+    createIcons({ icons: { Trash2 }, attrs: { class: 'w-4 h-4' } });
+
+    // 綁定事件
+    tbody.querySelectorAll('.mat-name-select').forEach(select => {
+      select.addEventListener('change', (e) => {
+        const idx = parseInt(e.target.closest('tr').dataset.index);
+        currentMaterials[idx].materialId = e.target.value;
+      });
+    });
+
+    tbody.querySelectorAll('.mat-qty-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const idx = parseInt(e.target.closest('tr').dataset.index);
+        currentMaterials[idx].qty = e.target.value;
+      });
+    });
+
+    tbody.querySelectorAll('.mat-note-input').forEach(input => {
+      input.addEventListener('input', (e) => {
+        const idx = parseInt(e.target.closest('tr').dataset.index);
+        currentMaterials[idx].note = e.target.value;
+      });
+    });
+
+    tbody.querySelectorAll('.btn-del-mat').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.currentTarget.dataset.index);
+        currentMaterials.splice(idx, 1);
+        renderMaterialsTable();
+      });
+    });
+  };
+
+  renderMaterialsTable();
+
+  // 新增物料按鈕
+  container.querySelector('#btn-add-material')?.addEventListener('click', () => {
+    currentMaterials.push({ materialId: '', qty: '', note: '' });
+    renderMaterialsTable();
+  });
+
+  // 5. 其他表單事件 (公式計算與路線圖連動)
   const bodyEl = container.querySelector('#editor-body');
-  const inputs = bodyEl.querySelectorAll('input, select, textarea');
+  const inputs = bodyEl.querySelectorAll('input[data-key], select[data-key]');
   
   const handleInputChange = (e) => {
     const target = e.target;
@@ -201,10 +325,12 @@ export function renderOrderEditor({
     input.addEventListener('change', handleInputChange);
   });
 
+  // 取消按鈕
   container.querySelector('#editor-btn-cancel')?.addEventListener('click', () => {
     if (onCancel) onCancel();
   });
 
+  // 儲存按鈕
   container.querySelector('#editor-btn-save')?.addEventListener('click', async () => {
     if (onSave) {
       const finalData = Object.assign({}, initialData); 
@@ -233,6 +359,17 @@ export function renderOrderEditor({
         }
       });
 
+      // 整理物料資料，並附帶物料名稱（方便匯出與顯示）
+      finalData.materials = currentMaterials.map(m => {
+        const matchedMat = materials.find(x => x.id === m.materialId);
+        return {
+          materialId: m.materialId,
+          name: matchedMat ? matchedMat.name : '未知物料',
+          qty: m.qty,
+          note: m.note
+        };
+      }).filter(m => m.materialId !== ''); // 過濾掉沒有選物料的空行
+
       await onSave(finalData);
     }
   });
@@ -240,6 +377,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793043000
+V: 1793061000
 W: UPGRADE-007
 */
