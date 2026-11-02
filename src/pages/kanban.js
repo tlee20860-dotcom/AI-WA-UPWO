@@ -273,7 +273,7 @@ export default {
           const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
           const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
           
-          // 💡 因為 parser.js 現在會自動找表頭，所以這裡只要確認陣列不為空即可
+          // 因為 parser.js 現在會自動找表頭，所以這裡只要確認陣列不為空即可
           if (jsonData.length === 0) {
             if (!isAuto) showToast('無資料', 'error');
             resolve();
@@ -296,7 +296,7 @@ export default {
             }
           } catch (err) {}
 
-          // 💡 直接將原始 jsonData 傳入，parser.js 會自動處理前幾行的空白與表頭偵測
+          // 直接將原始 jsonData 傳入，parser.js 會自動處理前幾行的空白與表頭偵測
           const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
           let added = 0, updated = 0, diffCount = 0;
 
@@ -310,8 +310,10 @@ export default {
                   diffCount++;
                 }
               } else {
+                // 💡 防覆寫：不更新 status, route, dueDate (保留手動修改)，但更新 uploadDate (以 Excel 為準)
                 await updateDocument('work_orders', order.id, { 
                   salesReps: order.salesReps, 
+                  uploadDate: order.uploadDate,
                   data: order.data 
                 });
                 updated++;
@@ -380,6 +382,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1793048000
+V: 1793050000
 W: UPGRADE-007
 */
