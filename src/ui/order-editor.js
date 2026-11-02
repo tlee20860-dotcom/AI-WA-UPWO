@@ -25,7 +25,8 @@ export function renderOrderEditor({
   formulas, 
   viewConfig, 
   routeTemplates = [],
-  materials = [], // 💡 接收物料主檔
+  materials = [], 
+  suppliers = [], // 💡 接收供應商主檔
   layoutMode = 'B', 
   initialData = null, 
   isViewMode = false,
@@ -46,6 +47,9 @@ export function renderOrderEditor({
   displayFields = displayFields.map(f => {
     if (f.key === 'route') {
       return Object.assign({}, f, { label: '製程路線圖' });
+    }
+    if (f.key === 'supplierName') {
+      return Object.assign({}, f, { label: '外發供應商' });
     }
     return f;
   });
@@ -101,6 +105,27 @@ export function renderOrderEditor({
           ${displayFields.map(f => {
             const value = formData[f.key] !== undefined ? formData[f.key] : '';
             
+            // 💡 特殊處理：外發供應商 (supplierName) 渲染為下拉選單
+            if (f.key === 'supplierName') {
+              // 檢查目前的值是否在供應商清單中，若不在則加入一個自訂選項（例如從 Excel 匯入的未知廠商）
+              const isKnown = suppliers.some(s => s.name === value);
+              const customOption = (value && !isKnown) ? `<option value="${value}" selected>${value} (自訂)</option>` : '';
+              
+              const disabledAttr = isViewMode ? 'disabled' : '';
+              const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
+
+              return `
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-medium text-slate-700">${f.label}</label>
+                  <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
+                    <option value="">(無 / 自行生產)</option>
+                    ${customOption}
+                    ${suppliers.map(s => `<option value="${s.name}" ${s.name === value ? 'selected' : ''}>${s.name}</option>`).join('')}
+                  </select>
+                </div>
+              `;
+            }
+
             // 特殊處理：製程路線圖 (route) 渲染為下拉選單
             if (f.key === 'route') {
               const orderCategory = getOrderCategory();
@@ -211,11 +236,16 @@ export function renderOrderEditor({
         return m.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
       });
 
+      // 如果該物料不在清單中（可能是舊資料），則加入一個自訂選項
+      const isKnown = availableMaterials.some(m => m.id === mat.materialId);
+      const customMatOption = (!isKnown && mat.materialId) ? `<option value="${mat.materialId}" selected>${mat.name || '未知物料'} (自訂)</option>` : '';
+
       return `
         <tr class="border-b border-slate-100 last:border-0" data-index="${idx}">
           <td class="py-2 pr-2">
             <select class="mat-name-select w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" ${isViewMode ? 'disabled' : ''}>
               <option value="">請選擇物料</option>
+              ${customMatOption}
               ${availableMaterials.map(m => `<option value="${m.id}" ${mat.materialId === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
             </select>
           </td>
@@ -351,8 +381,13 @@ export function renderOrderEditor({
 
       displayFields.forEach(f => {
         if (f.key === 'route' || f.key === 'status') return;
+        
         const val = formData[f.key];
-        if (f.isSystem) {
+        
+        // 處理核心欄位與動態欄位
+        if (f.key === 'supplierName') {
+           finalData.supplierName = val; // 外發商存在根目錄
+        } else if (f.isSystem) {
           finalData[f.key] = val;
         } else {
           finalData.data[f.key] = val;
@@ -377,6 +412,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793061000
+V: 1793067000
 W: UPGRADE-007
 */
