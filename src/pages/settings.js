@@ -114,6 +114,21 @@ export default {
           }
         }
 
+        // 💡 遷移：強制修正 uploadDate 的 Label 與屬性
+        if (currentSettings.schema) {
+          const uploadDateField = currentSettings.schema.find(f => f.key === 'uploadDate');
+          if (uploadDateField) {
+            if (uploadDateField.label !== '開單日期' || uploadDateField.isEditable !== false) {
+              uploadDateField.label = '開單日期';
+              uploadDateField.isEditable = false;
+              needSave = true;
+            }
+          } else {
+            currentSettings.schema.push({ key: 'uploadDate', label: '開單日期', type: 'date', isSystem: true, isEditable: false });
+            needSave = true;
+          }
+        }
+
         // 資料遷移與修復：製程模板
         if (currentSettings.route_templates) {
           currentSettings.route_templates.forEach(t => {
@@ -151,7 +166,7 @@ export default {
       }
 
       if (needSave) {
-        // 💡 使用 updateDocument 避免覆蓋掉表單設定頁面維護的 schema/view_configs 等資料
+        // 使用 updateDocument 避免覆蓋掉表單設定頁面維護的 schema/view_configs 等資料
         await updateDocument('settings', 'main', currentSettings);
       }
 
@@ -648,9 +663,10 @@ export default {
                   diffCount++;
                 }
               } else {
-                // 💡 防覆寫：不更新 status, route, dueDate, uploadDate
+                // 💡 防覆寫：不更新 status, route, dueDate (保留手動修改)，但更新 uploadDate (以 Excel 為準)
                 await updateDocument('work_orders', order.id, {
                   salesReps: order.salesReps,
+                  uploadDate: order.uploadDate,
                   data: order.data
                 });
                 updatedCount++;
@@ -659,7 +675,6 @@ export default {
               // 💡 新增工單：套用 Excel 的狀態與路線
               const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
               let matchedTemplate = (latestSettings.route_templates || []).find(t => {
-                // 💡 修正：強化比對邏輯，去除空白並轉大寫
                 if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
                   return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
                 }
@@ -722,6 +737,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793040000
+V: 1793049000
 W: UPGRADE-007
 */
