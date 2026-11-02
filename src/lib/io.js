@@ -3,51 +3,124 @@ import { jsPDF } from 'jspdf';
 import { groupByStatus } from '../domain/stats.js';
 
 /**
- * 將工單資料匯出為 Excel 檔案 (依狀態分 Sheet，包含動態欄位)
+ * 將工單資料匯出為 Excel 檔案
  * @param {Array<Object>} orders 工單陣列
  * @param {Array<string>} statuses 狀態清單
  * @param {string} filename 檔案名稱 (不含副檔名)
- * @param {Array} schema 系統欄位設定 (用於抓取自訂欄位)
+ * @param {Array} schema 系統欄位設定
+ * @param {Array<string>} exportConfig 自訂匯出欄位 (若為 null 或空，則使用預設)
  */
-export function exportToExcel(orders, statuses, filename = '工單清單', schema = []) {
+export function exportToExcel(orders, statuses, filename = '工單清單', schema = [], exportConfig = null) {
   if (!orders || orders.length === 0) {
     throw new Error('無資料可匯出');
   }
 
-  const groupedData = groupByStatus(orders, statuses);
   const wb = XLSX.utils.book_new();
+  const groupedData = groupByStatus(orders, statuses);
 
-  // 過濾出非系統的自訂欄位
-  const customFields = schema.filter(f => !f.isSystem);
+  // 輔助函數：將 route 陣列轉為字串
+  const formatRoute = (routeArr) => {
+    if (Array.isArray(routeArr) && routeArr.length > 0) {
+      return routeArr.join(' → ');
+    }
+    return '';
+  };
+
+  // 輔助函數：取得所有資料庫中出現的動態欄位 Key (用於「全部工單」)
+  const getAllDataKeys = () => {
+    const keys = new Set();
+    orders.forEach(o => {
+      if (o.data) {
+        Object.keys(o.data).forEach(k => keys.add(k));
+      }
+    });
+    return Array.from(keys);
+  };
+  const allDataKeys = getAllDataKeys();
+
+  // ── 1. 建立「全部工單」Sheet (全欄位) ──
+  const allDataToExport = orders.map(order => {
+    const row = {
+      '工單號碼': order.id,
+      '狀態': order.status,
+      '製程路線': formatRoute(order.route),
+      '銷售員': (order.salesReps || []).join(', '),
+      '上傳日期': order.uploadDate || '',
+      '交貨日期': order.dueDate || '',
+      '狀態更新日': order.statusUpdateDate || '',
+      '來源': order.source === 'manual' ? '手動' : 'Excel',
+      '核對狀態': order.diff ? '有差異' : '正常'
+    };
+
+    // 加入 Schema 定義的欄位
+    schema.forEach(field => {
+      if (!field.isSystem) {
+        row[field.label] = order.data && order.data[field.key] !== undefined ? order.data[field.key] : '';
+      }
+    });
+
+    // 加入 Schema 未定義但在資料中存在的欄位
+    allDataKeys.forEach(key => {
+      const schemaField = schema.find(f => f.key === key);
+      if (!schemaField) {
+        row[key] = order.data && order.data[key] !== undefined ? order.data[key] : '';
+      }
+    });
+
+    return row;
+  });
+
+  const wsAll = XLSX.utils.json_to_sheet(allDataToExport);
+  XLSX.utils.book_append_sheet(wb, wsAll, '全部工單');
+
+  // ── 2. 建立「分狀態」Sheets (依自訂欄位) ──
+  // 決定要輸出的欄位 (若無設定則 Fallback 到預設)
+  let targetFields = [];
+  if (exportConfig && exportConfig.length > 0) {
+    targetFields = exportConfig.map(key => schema.find(f => f.key === key)).filter(Boolean);
+  } else {
+    // 預設欄位
+    targetFields = [
+      { key: 'id', label: '工單號碼' },
+      { key: 'status', label: '狀態' },
+      { key: 'salesReps', label: '銷售員' },
+      { key: 'uploadDate', label: '上傳日期' },
+      { key: 'dueDate', label: '交貨日期' }
+    ];
+    schema.filter(f => !f.isSystem).forEach(f => targetFields.push(f));
+  }
 
   for (const status of statuses) {
     const statusOrders = groupedData[status] || [];
     if (statusOrders.length === 0) continue;
 
-    // 整理要輸出的欄位
     const dataToExport = statusOrders.map(order => {
-      // 基礎固定欄位
-      const row = {
-        '工單號碼': order.id,
-        '類別': order.data?.category || '其他',
-        '狀態': order.status,
-        '銷售員': (order.salesReps || []).join(', '),
-        '上傳日期': order.uploadDate || '',
-        '狀態更新日': order.statusUpdateDate || '',
-        '交貨日期': order.dueDate || ''
-      };
-
-      // 動態加入自訂欄位
-      customFields.forEach(field => {
-        row[field.label] = order.data && order.data[field.key] !== undefined ? order.data[field.key] : '';
+      const row = {};
+      
+      targetFields.forEach(f => {
+        if (f.key === 'id') {
+          row['工單號碼'] = order.id;
+        } else if (f.key === 'status') {
+          row['狀態'] = order.status;
+        } else if (f.key === 'salesReps') {
+          row['銷售員'] = (order.salesReps || []).join(', ');
+        } else if (f.key === 'uploadDate') {
+          row['上傳日期'] = order.uploadDate || '';
+        } else if (f.key === 'dueDate') {
+          row['交貨日期'] = order.dueDate || '';
+        } else if (f.key === 'route') {
+          row['製程路線'] = formatRoute(order.route);
+        } else if (f.isSystem) {
+          row[f.label] = order[f.key] || '';
+        } else {
+          row[f.label] = order.data && order.data[f.key] !== undefined ? order.data[f.key] : '';
+        }
       });
 
       return row;
     });
 
-    // 建立工作表
     const ws = XLSX.utils.json_to_sheet(dataToExport);
-    // 將工作表加入活頁簿，並以狀態名稱命名（Excel sheet 名稱限制 31 字元）
     XLSX.utils.book_append_sheet(wb, ws, status.substring(0, 31));
   }
 
@@ -56,7 +129,7 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
 }
 
 /**
- * 將工單資料匯出為 PDF 檔案 (依狀態分頁，包含動態欄位)
+ * 將工單資料匯出為 PDF 檔案 (依狀態分頁)
  * @param {Array<Object>} orders 工單陣列
  * @param {Array<string>} statuses 狀態清單
  * @param {string} filename 檔案名稱 (不含副檔名)
@@ -152,8 +225,8 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
   doc.save(`${filename}_${new Date().toISOString().slice(0,10)}.pdf`);
 }
 
-/* ═══ EOF ═══
+/*
 F: AI-WA-UPWO/src/lib/io.js
-V: 1792912500
-W: UPGRADE-002
-═══ */
+V: 1793013000
+W: UPGRADE-007
+*/
