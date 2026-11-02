@@ -2,6 +2,19 @@ import { AppState } from '../config/state.js';
 import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings, Plus, AlertCircle } from 'lucide';
 
 /**
+ * 輔助函式：將可能是字串或陣列的 route 統一轉為陣列
+ */
+function normalizeRoute(route) {
+  if (Array.isArray(route)) return route;
+  if (typeof route === 'string') {
+    if (route.includes(',')) return route.split(',').map(s => s.trim()).filter(Boolean);
+    if (route.includes('→')) return route.split('→').map(s => s.trim()).filter(Boolean);
+    return [route.trim()];
+  }
+  return [];
+}
+
+/**
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
  */
 export function formatExcelDate(val) {
@@ -34,17 +47,6 @@ const viewStates = {};
 
 /**
  * 核心渲染器：完全數據驅動
- * @param {Object} options
- * @param {string} options.containerId 容器 ID
- * @param {Array} options.orders 工單陣列
- * @param {Array} options.visibleFields 顯示欄位
- * @param {boolean} options.isAdmin 是否為管理員
- * @param {string} options.pageKey 頁面識別碼
- * @param {Array} options.route_templates 所有的生產流程模板
- * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏所有編輯）
- * @param {boolean} options.allowStatusChange 是否允許更改狀態（生產員專用，只顯示上下步，隱藏其他編輯）
- * @param {string} options.groupBy 分組模式（例如：'status'，若為空則不分组）
- * @param {Function} options.onAction 動作回呼
  */
 export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
   const container = document.getElementById(containerId);
@@ -220,7 +222,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span>${diffHtml}</div>`;
             }
 
-            let route = order.route && order.route.length > 0 ? order.route : allStatuses;
+            // 💡 修正：正規化 route
+            let route = order.route ? normalizeRoute(order.route) : allStatuses;
+            if (route.length === 0) route = allStatuses;
+
             let idx = route.indexOf(order.status);
             if (idx === -1) idx = 0;
             const isFirst = idx <= 0;
@@ -229,7 +234,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const nextStep = isLast ? '' : route[idx + 1];
             const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
 
-            // 判斷是否顯示齒輪 (只有 !isReadOnly 且 !allowStatusChange 才顯示)
             const showGear = !isReadOnly && !allowStatusChange;
 
             return `
@@ -266,9 +270,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               return t.categories.includes(orderCat);
             });
 
+            // 💡 修正：正規化 route 再比對
+            const currentRouteArr = order.route ? normalizeRoute(order.route) : [];
             let currentMatchName = '';
             availableTemplates.forEach(t => {
-              if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
+              if (JSON.stringify(t.steps) === JSON.stringify(currentRouteArr)) {
                 currentMatchName = t.name;
               }
             });
@@ -289,7 +295,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          // 判斷是否可編輯 (若允許改狀態但唯讀其他欄位，此處會被擋下)
           if (f.isEditable && !isReadOnly && !allowStatusChange) {
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
@@ -303,7 +308,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
           
-          return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${val || '-'}</span>${diffHtml}</div>`;
+          // 💡 若是一般顯示 route (非下拉選單)，也格式化一下
+          let displayVal = val;
+          if (f.key === 'route') displayVal = normalizeRoute(val).join(' → ');
+
+          return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${displayVal || '-'}</span>${diffHtml}</div>`;
         }).join('')}
         ${isAdmin ? `
           <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
@@ -344,7 +353,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700 flex items-center">${order.status}${diffHtml}</td>`;
                     }
 
-                    let route = order.route && order.route.length > 0 ? order.route : allStatuses;
+                    // 💡 修正：正規化 route
+                    let route = order.route ? normalizeRoute(order.route) : allStatuses;
+                    if (route.length === 0) route = allStatuses;
+
                     let idx = route.indexOf(order.status);
                     if (idx === -1) idx = 0;
                     const isFirst = idx <= 0;
@@ -388,9 +400,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       return t.categories.includes(orderCat);
                     });
 
+                    // 💡 修正：正規化 route 再比對
+                    const currentRouteArr = order.route ? normalizeRoute(order.route) : [];
                     let currentMatchName = '';
                     availableTemplates.forEach(t => {
-                      if (JSON.stringify(t.steps) === JSON.stringify(order.route)) {
+                      if (JSON.stringify(t.steps) === JSON.stringify(currentRouteArr)) {
                         currentMatchName = t.name;
                       }
                     });
@@ -425,7 +439,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
                   
-                  return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}${diffHtml}</td>`;
+                  // 💡 若是一般顯示 route (非下拉選單)，也格式化一下
+                  let displayVal = val;
+                  if (f.key === 'route') displayVal = normalizeRoute(val).join(' → ');
+
+                  return `<td class="px-4 py-3 whitespace-nowrap">${displayVal || '-'}${diffHtml}</td>`;
                 }).join('')}
                 ${isAdmin ? `
                   <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -443,7 +461,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   let contentHtml = '';
 
   if (groupBy === 'status') {
-    // 按工序分組渲染
     const statuses = AppState.getStatuses() || [];
     const grouped = {};
     statuses.forEach(s => grouped[s] = []);
@@ -477,7 +494,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     }).join('');
 
   } else {
-    // 不分組，原本的全局渲染
     if (state.viewType === 'card') {
       contentHtml = `<div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 pb-4">${cleanOrders.map(o => renderCard(o)).join('')}</div>`;
     } else {
@@ -507,6 +523,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1793002000
+V: 1793037000
 W: UPGRADE-007
 */
