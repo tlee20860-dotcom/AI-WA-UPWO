@@ -2,6 +2,7 @@ class State {
   constructor() {
     this.user = null;
     this.statuses = ['排產中', '印刷', '裁切', '品檢', '出貨'];
+    this.navConfig = null; // 💡 新增：導覽選單配置
   }
 
   // ═══ 使用者相關 ═══
@@ -44,13 +45,24 @@ class State {
   getStatuses() {
     return this.statuses;
   }
+
+  // ═══ 導覽選單相關 ═══
+  setNavConfig(config) {
+    if (Array.isArray(config)) {
+      this.navConfig = config;
+    }
+  }
+
+  getNavConfig() {
+    return this.navConfig;
+  }
 }
 
 // 匯出單一實例 (Singleton)
 export const AppState = new State();
 
-/* ═══ EOF ═══
-F: src/config/state.js
-V: 1792903521
-W: webapp-20261026-001#33
-═══ */
+/*
+F: AI-WA-UPWO/src/config/state.js
+V: 1793020000
+W: UPGRADE-007
+*/
