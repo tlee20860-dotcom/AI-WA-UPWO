@@ -6,6 +6,7 @@ import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
 import { parseExcelData } from '../domain/parser.js';
+import { checkDiff } from '../domain/data-diff.js'; // 💡 新增引入
 import * as XLSX from 'xlsx';
 import { createIcons, Upload, RefreshCw } from 'lucide';
 
@@ -16,6 +17,7 @@ let schema = [];
 let viewConfig = {};
 let route_templates = [];
 let settingsCategories = [];
+let diffFields = []; // 💡 新增：記錄要核對的欄位
 
 // 自動同步相關變數
 let autoSyncInterval = null;
@@ -34,6 +36,7 @@ export default {
         viewConfig = settingsDoc.view_configs || {};
         route_templates = settingsDoc.route_templates || [];
         settingsCategories = settingsDoc.categories || [];
+        diffFields = settingsDoc.diff_fields || []; // 💡 載入核對設定
       }
     } catch (err) {}
 
@@ -85,6 +88,7 @@ export default {
           viewConfig = settingsDoc.view_configs || {};
           route_templates = settingsDoc.route_templates || [];
           settingsCategories = settingsDoc.categories || [];
+          diffFields = settingsDoc.diff_fields || []; // 💡 更新核對設定
           this.updateUI();
         }
       } catch (err) {}
@@ -294,17 +298,29 @@ export default {
             statuses = s.statuses || statuses; 
             schema = s.schema || schema; 
             routeTemplates = s.route_templates || [];
+            diffFields = s.diff_fields || []; // 💡 確保取到最新設定
           }
         } catch (err) {}
 
         const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
-        let added = 0, updated = 0;
+        let added = 0, updated = 0, diffCount = 0; // 💡 新增 diffCount
 
         for (const order of parsed) {
           const existing = await getDocument('work_orders', order.id);
           if (existing) {
-            await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
-            updated++;
+            // 💡 檢查是否為手動工單
+            if (existing.source === 'manual') {
+              // 手動工單：比對差異，不覆蓋資料
+              const diffResult = checkDiff(existing, order, diffFields);
+              if (diffResult) {
+                await updateDocument('work_orders', order.id, { diff: diffResult });
+                diffCount++;
+              }
+            } else {
+              // Excel 工單：直接更新
+              await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
+              updated++;
+            }
           } else {
             const orderCategory = order.data.category || '其他';
             let matchedTemplate = routeTemplates.find(t => {
@@ -324,17 +340,23 @@ export default {
               order.route = statuses.slice();
               order.status = statuses[0];
             }
+            
+            // 💡 確保來源標記
+            order.source = 'excel';
 
             await setDocument('work_orders', order.id, order);
             added++;
           }
         }
         
-        if (isAuto) {
-          showToast(`自動同步完成！更新 ${updated} 筆，新增 ${added} 筆`, 'success');
-        } else {
-          showToast(`匯入完成！新增 ${added}，更新 ${updated}`, 'success');
+        // 💡 組合提示訊息
+        let msg = isAuto ? '自動同步完成！' : '匯入完成！';
+        msg += ` 新增 ${added}，更新 ${updated}`;
+        if (diffCount > 0) {
+          msg += `，其中 ${diffCount} 筆與手動輸入資料不符`;
         }
+
+        showToast(msg, 'success');
         
       } catch (error) {
         console.error('[Import Error]', error);
@@ -355,6 +377,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1792976000
-W: UPGRADE-005
+V: 1793000000
+W: UPGRADE-007
 */
