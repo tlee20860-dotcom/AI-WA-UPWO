@@ -1,6 +1,6 @@
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
-import { createIcons, Plus, Trash2, Edit2, LayoutDashboard, Table, PieChart, Layers, Users, GripVertical, X, Check, FileEdit } from 'lucide';
+import { createIcons, Plus, Trash2, Edit2, LayoutDashboard, Table, PieChart, Layers, Users, GripVertical, X, Check, FileEdit, Download } from 'lucide';
 
 let activeViewPage = 'kanban';
 
@@ -155,12 +155,14 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
     { key: 'overview', label: '總狀態視圖', icon: 'pie-chart' },
     { key: 'category', label: '類別視圖', icon: 'layers' },
     { key: 'salesperson', label: '銷售員視圖', icon: 'users' },
-    { key: 'data-entry', label: '資料錄入表單', icon: 'file-edit' } // 💡 新增資料錄入表單選項
+    { key: 'data-entry', label: '資料錄入表單', icon: 'file-edit' },
+    { key: 'export', label: '匯出 Excel 欄位', icon: 'download' } // 💡 新增匯出設定
   ];
 
-  // 確保 view_configs['data-entry'] 存在，避免報錯
-  if (!currentSettings.view_configs['data-entry']) {
-    currentSettings.view_configs['data-entry'] = [];
+  // 確保 view_configs['export'] 存在，避免報錯
+  if (!currentSettings.view_configs['export']) {
+    // 預設匯出欄位
+    currentSettings.view_configs['export'] = ['id', 'status', 'customerNameZh', 'amount', 'dueDate'];
   }
 
   // 取得當前頁面已顯示的欄位（保持自訂順序）
@@ -292,6 +294,6 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-schema.js
-V: 1792996000
+V: 1793012000
 W: UPGRADE-007
 */
