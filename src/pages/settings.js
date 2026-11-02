@@ -6,6 +6,7 @@ import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { parseExcelData } from '../domain/parser.js';
+import { checkDiff } from '../domain/data-diff.js'; // 💡 新增引入
 import { createIcons, Upload, Plus, Trash2, GripVertical, FileSpreadsheet, Users, Tag, Shield, X, List, Database, Edit2, AlertCircle, LayoutDashboard, Table, PieChart, Layers, Check, MapPin, Activity } from 'lucide';
 
 // 引入拆分出去的模組
@@ -16,7 +17,7 @@ import { renderCategories } from './settings-category.js';
 import { renderAreaStatuses } from './settings-area-status.js';
 
 let unsubscribe = null;
-export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [], categories: [], areaStatuses: [] };
+export let currentSettings = { statuses: [], sales_mapping: [], users: [], schema: [], view_configs: {}, route_templates: [], areas: [], categories: [], areaStatuses: [], diff_fields: [] };
 let activeTab = 'statuses';
 let allSalesReps = [];
 
@@ -68,7 +69,8 @@ export default {
           route_templates: data.route_templates || this.getDefaultRouteTemplates(data.statuses || ['排產中']),
           areas: Array.isArray(data.areas) ? data.areas : [],
           categories: Array.isArray(data.categories) ? data.categories : [],
-          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中']
+          areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中'],
+          diff_fields: Array.isArray(data.diff_fields) ? data.diff_fields : ['amount'] // 💡 新增差異核對欄位
         };
 
         // 遷移：areas 不存在
@@ -170,7 +172,8 @@ export default {
           route_templates: this.getDefaultRouteTemplates(),
           areas: [],
           categories: [],
-          areaStatuses: ['正常', '壞機', '休息中']
+          areaStatuses: ['正常', '壞機', '休息中'],
+          diff_fields: ['amount'] // 💡 預設核對金額
         };
         needSave = true;
       }
@@ -212,7 +215,8 @@ export default {
       table: ['id', 'customCategory', 'status', 'uploadDate', 'dueDate', 'amount', 'customerNameZh', 'customerNameEn'],
       category: ['id', 'customCategory', 'status', 'dueDate'],
       salesperson: ['id', 'customCategory', 'status', 'dueDate'],
-      overview: ['id', 'status', 'salesRep', 'dueDate']
+      overview: ['id', 'status', 'salesRep', 'dueDate'],
+      'data-entry': ['id', 'customerNameZh', 'salesRep', 'amount', 'dueDate'] // 💡 新增預設視圖
     };
   },
 
@@ -604,7 +608,6 @@ export default {
   },
 
   renderDataManagement(container) {
-    // 與原本相同
     container.innerHTML = `
       <div class="flex justify-between items-center mb-6">
         <div>
@@ -657,7 +660,6 @@ export default {
   },
 
   renderImport(container) {
-    // 與原本相同
     container.innerHTML = `
       <div class="flex flex-col items-center justify-center h-full min-h-[300px] border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50 p-8 text-center relative" id="drop-zone">
         <input type="file" id="excel-input" accept=".xlsx, .xls" class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
@@ -698,23 +700,40 @@ export default {
 
           let addedCount = 0;
           let updatedCount = 0;
+          let diffCount = 0; // 💡 新增差異計數
 
           for (const order of parsedOrders) {
             const existing = await getDocument('work_orders', order.id);
             if (existing) {
-              await updateDocument('work_orders', order.id, {
-                salesReps: order.salesReps,
-                uploadDate: order.uploadDate,
-                data: order.data
-              });
-              updatedCount++;
+              // 💡 檢查是否為手動工單
+              if (existing.source === 'manual') {
+                const diffResult = checkDiff(existing, order, currentSettings.diff_fields || []);
+                if (diffResult) {
+                  await updateDocument('work_orders', order.id, { diff: diffResult });
+                  diffCount++;
+                }
+              } else {
+                await updateDocument('work_orders', order.id, {
+                  salesReps: order.salesReps,
+                  uploadDate: order.uploadDate,
+                  data: order.data
+                });
+                updatedCount++;
+              }
             } else {
+              order.source = 'excel'; // 💡 確保來源標記
               await setDocument('work_orders', order.id, order);
               addedCount++;
             }
           }
 
-          showToast(`匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`, 'success');
+          // 💡 組合提示訊息
+          let msg = `匯入完成！新增 ${addedCount} 筆，更新 ${updatedCount} 筆。`;
+          if (diffCount > 0) {
+            msg += ` 其中 ${diffCount} 筆與手動輸入資料不符。`;
+          }
+
+          showToast(msg, 'success');
           fileInput.value = '';
         } catch (error) {
           console.error('Import Error:', error);
@@ -740,6 +759,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1792981000
-W: UPGRADE-005
+V: 1793001000
+W: UPGRADE-007
 */
