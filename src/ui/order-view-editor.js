@@ -3,7 +3,7 @@ import { getDocument, getCollection } from '../db/read.js';
 import { showToast } from '../ui/toast.js';
 import { openModal } from '../ui/modal.js';
 import { openRouteBuilder } from './route-builder.js';
-import { openOrderDetailModal } from './order-detail-modal.js';
+import { openOrderModal } from './order-detail-modal.js'; // 💡 修正：改為 openOrderModal
 import { AppState } from '../config/state.js';
 import { createIcons, GripVertical, Plus, X } from 'lucide';
 
@@ -158,12 +158,12 @@ document.addEventListener('click', async (e) => {
   if (detailBtn) {
     const id = detailBtn.dataset.id;
     try {
-      const orderDoc = await getDocument('work_orders', id);
       const settingsDoc = await getDocument('settings', 'main');
       
-      if (orderDoc && settingsDoc) {
-        openOrderDetailModal({
-          order: orderDoc,
+      if (settingsDoc) {
+        // 💡 改用新的 openOrderModal，傳入 orderId
+        openOrderModal({
+          orderId: id,
           currentSettings: settingsDoc
         });
       }
@@ -423,6 +423,6 @@ document.addEventListener('click', async (e) => {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view-editor.js
-V: 1793003000
+V: 1793035000
 W: UPGRADE-007
 */
