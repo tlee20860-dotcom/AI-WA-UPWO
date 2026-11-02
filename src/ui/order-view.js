@@ -1,5 +1,5 @@
 import { AppState } from '../config/state.js';
-import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings, Plus } from 'lucide';
+import { createIcons, ArrowUpDown, ArrowUp, ArrowDown, Trash2, Inbox, Search, ChevronLeft, ChevronRight, Settings, Plus, AlertCircle } from 'lucide';
 
 /**
  * 將 Excel 日期轉為 YYYY-MM-DD，並防呆過濾
@@ -41,13 +41,12 @@ const viewStates = {};
  * @param {boolean} options.isAdmin 是否為管理員
  * @param {string} options.pageKey 頁面識別碼
  * @param {Array} options.route_templates 所有的生產流程模板
- * @param {Array} options.areas 所有的生產區域（用於顯示 area_name）
- * @param {boolean} options.isReadOnly 是否為唯讀模式
- * @param {boolean} options.allowStatusChange 是否允許更改狀態
- * @param {string} options.groupBy 分組模式（例如：'status'）
+ * @param {boolean} options.isReadOnly 是否為唯讀模式（隱藏所有編輯）
+ * @param {boolean} options.allowStatusChange 是否允許更改狀態（生產員專用，只顯示上下步，隱藏其他編輯）
+ * @param {string} options.groupBy 分組模式（例如：'status'，若為空則不分组）
  * @param {Function} options.onAction 動作回呼
  */
-export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], areas = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
+export function renderOrderView({ containerId, orders, visibleFields = [], isAdmin = false, pageKey, route_templates = [], isReadOnly = false, allowStatusChange = false, groupBy = null, onAction }) {
   const container = document.getElementById(containerId);
   if (!container) return;
 
@@ -180,7 +179,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
         <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
           <i data-lucide="search" class="w-4 h-4"></i>
         </div>
-        <input type="text" data-action="global-search" data-page-key="${pageKey}" value="${state.filters['__GLOBAL__'] || ''}" class="w-full pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm" placeholder="搜尋所有欄位&#8230;">
+        <input type="text" data-action="global-search" data-page-key="${pageKey}" value="${state.filters['__GLOBAL__'] || ''}" class="w-full pl-9 pr-4 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm" placeholder="搜尋所有欄位">
       </div>
     </div>
   `;
@@ -196,23 +195,12 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     return;
   }
 
-  // 輔助函數：取得工單所屬的區域名稱
-  const getOrderAreaName = (order) => {
-    const matchedAreas = areas.filter(a => (a.statuses || []).includes(order.status));
-    const orderCat = getOrderCategory(order);
-    
-    const validAreas = matchedAreas.filter(a => {
-      let areaCats = [];
-      if (Array.isArray(a.categories)) {
-        areaCats = a.categories.map(c => String(c).toUpperCase());
-      } else if (typeof a.category === 'string' && a.category.trim() !== '') {
-        areaCats = a.category.split(',').map(c => c.trim().toUpperCase()).filter(Boolean);
-      }
-      return areaCats.length === 0 || areaCats.includes(orderCat);
-    });
-
-    if (validAreas.length === 0) return '-';
-    return validAreas.map(a => a.name).join(', ');
+  // 輔助渲染函數：差異標記 HTML
+  const renderDiffIcon = (order, fieldKey) => {
+    if (order.diff && order.diff[fieldKey]) {
+      return `<span class="text-rose-500 ml-1 cursor-help flex-shrink-0" title="Excel 值: ${order.diff[fieldKey].excel}"><i data-lucide="alert-circle" class="w-4 h-4 inline-block"></i></span>`;
+    }
+    return '';
   };
 
   // 輔助渲染函數：單一工單卡片
@@ -221,17 +209,15 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
       <div class="glass-card p-4 flex flex-col gap-2">
         ${displayFields.map(f => {
           const val = getOrderValue(order, f.key);
+          const diffHtml = renderDiffIcon(order, f.key);
           
           if (f.key === 'id') {
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
           }
-          if (f.key === 'area_name') {
-            const areaName = getOrderAreaName(order);
-            return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${areaName}</span></div>`;
-          }
           if (f.key === 'status') {
+            // 若完全唯讀且不允許改狀態，顯示純文字
             if (isReadOnly && !allowStatusChange) {
-              return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span></div>`;
+              return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700">${order.status}</span>${diffHtml}</div>`;
             }
 
             let route = order.route && order.route.length > 0 ? order.route : allStatuses;
@@ -242,11 +228,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             const prevStep = isFirst ? '' : route[idx - 1];
             const nextStep = isLast ? '' : route[idx + 1];
             const routeStr = JSON.stringify(route).replace(/"/g, '&quot;');
+
+            // 判斷是否顯示齒輪 (只有 !isReadOnly 且 !allowStatusChange 才顯示)
             const showGear = !isReadOnly && !allowStatusChange;
 
             return `
               <div class="text-sm flex flex-col gap-1">
-                <span class="text-slate-400">${f.label}:</span>
+                <span class="text-slate-400 flex items-center">${f.label}: ${diffHtml}</span>
                 <div class="flex items-center gap-1 bg-slate-50 border border-slate-200 rounded-lg px-1 py-0.5 w-fit max-w-full">
                   <button data-action="prev-step" data-id="${order.id}" data-route="${routeStr}" data-status="${order.status}" 
                     class="flex items-center text-xs p-1 rounded text-slate-600 hover:bg-slate-200 transition-colors ${isFirst ? 'opacity-30 cursor-not-allowed' : ''}" ${isFirst ? 'disabled' : ''}>
@@ -301,20 +289,21 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
+          // 判斷是否可編輯 (若允許改狀態但唯讀其他欄位，此處會被擋下)
           if (f.isEditable && !isReadOnly && !allowStatusChange) {
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             const displayVal = f.type === 'date' ? formatExcelDate(val) : val;
             
             return `
               <div class="text-sm flex flex-col gap-1">
-                <span class="text-slate-400">${f.label}:</span>
+                <span class="text-slate-400 flex items-center">${f.label}: ${diffHtml}</span>
                 <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
                   class="w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors">
               </div>
             `;
           }
           
-          return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${val || '-'}</span></div>`;
+          return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${val || '-'}</span>${diffHtml}</div>`;
         }).join('')}
         ${isAdmin ? `
           <div class="mt-auto pt-2 border-t border-slate-100 flex justify-end">
@@ -345,16 +334,14 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
               <tr class="hover:bg-slate-50/50 transition-colors">
                 ${displayFields.map(f => {
                   const val = getOrderValue(order, f.key);
+                  const diffHtml = renderDiffIcon(order, f.key);
+
                   if (f.key === 'id') {
                     return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
                   }
-                  if (f.key === 'area_name') {
-                    const areaName = getOrderAreaName(order);
-                    return `<td class="px-4 py-3 whitespace-nowrap font-medium text-slate-600">${areaName}</td>`;
-                  }
                   if (f.key === 'status') {
                     if (isReadOnly && !allowStatusChange) {
-                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}</td>`;
+                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700 flex items-center">${order.status}${diffHtml}</td>`;
                     }
 
                     let route = order.route && order.route.length > 0 ? order.route : allStatuses;
@@ -388,6 +375,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                             <i data-lucide="settings" class="w-4 h-4"></i>
                           </button>
                           ` : ''}
+                          ${diffHtml}
                         </div>
                       </td>
                     `;
@@ -428,13 +416,16 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     
                     return `
                       <td class="px-2 py-2 whitespace-nowrap">
-                        <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
-                          class="w-full px-2 py-1.5 bg-transparent border border-transparent hover:border-slate-200 focus:border-brand focus:bg-white rounded-lg text-sm transition-colors outline-none">
+                        <div class="flex items-center">
+                          <input type="${inputType}" data-action="inline-edit" data-id="${order.id}" data-key="${f.key}" value="${displayVal || ''}" 
+                            class="w-full px-2 py-1.5 bg-transparent border border-transparent hover:border-slate-200 focus:border-brand focus:bg-white rounded-lg text-sm transition-colors outline-none ${order.diff && order.diff[f.key] ? 'text-rose-600' : ''}">
+                          ${diffHtml}
+                        </div>
                       </td>
                     `;
                   }
                   
-                  return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}</td>`;
+                  return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}${diffHtml}</td>`;
                 }).join('')}
                 ${isAdmin ? `
                   <td class="px-4 py-3 text-center whitespace-nowrap">
@@ -495,7 +486,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   }
 
   container.innerHTML = viewToggleHtml + contentHtml;
-  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Settings, Plus }, attrs: { class: 'w-4 h-4' } });
+  createIcons({ icons: { ArrowUpDown, ArrowUp, ArrowDown, Search, ChevronLeft, ChevronRight, Settings, Plus, AlertCircle }, attrs: { class: 'w-4 h-4' } });
 }
 
 /**
@@ -516,6 +507,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1792987000
-W: UPGRADE-005
+V: 1793002000
+W: UPGRADE-007
 */
