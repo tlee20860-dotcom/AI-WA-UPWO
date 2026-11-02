@@ -150,7 +150,7 @@ export function renderStatuses(container, currentSettings, saveSettings) {
 }
 
 /**
- * 渲染製程模板管理頁籤
+ * 渲染製程路線圖管理頁籤（💡 名詞替換：原製程模板）
  */
 export function renderRouteTemplates(container, currentSettings, saveSettings) {
   // 取得類別清單作為下拉選單選項
@@ -159,22 +159,21 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
   container.innerHTML = `
     <div class="flex justify-between items-center mb-6">
       <div>
-        <h2 class="text-lg font-bold text-slate-800">製程模板管理</h2>
-        <p class="text-sm text-slate-500 mt-1">建立生產路線並綁定類別，匯入工單時會自動套用對應類別的模板。</p>
+        <h2 class="text-lg font-bold text-slate-800">製程路線圖管理</h2>
+        <p class="text-sm text-slate-500 mt-1">建立生產路線並綁定類別，匯入工單時會自動套用對應類別的路線圖。</p>
       </div>
     </div>
 
     <div class="flex flex-col sm:flex-row gap-2 mb-6">
-      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="模板名稱 (例如：GF生產流程)">
+      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="路線圖名稱 (例如：GF生產路線圖)">
       
-      <!-- 💡 改為下拉選單 -->
       <select id="new-template-category" class="w-full sm:w-48 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
         <option value="">(通用預設)</option>
         ${catOptions}
       </select>
 
       <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
-        <i data-lucide="plus" class="w-4 h-4"></i> 新增模板
+        <i data-lucide="plus" class="w-4 h-4"></i> 新增路線圖
       </button>
     </div>
 
@@ -221,12 +220,12 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
     
     if (!name) return;
     if (currentSettings.route_templates.some(t => t.name === name)) {
-      showToast('模板名稱已存在', 'error');
+      showToast('名稱已存在', 'error');
       return;
     }
     currentSettings.route_templates.push({ name, category, steps: [] });
     await saveSettings();
-    showToast('模板已新增，請編輯工序', 'success');
+    showToast('路線圖已新增，請編輯工序', 'success');
   });
 
   // 刪除模板
@@ -234,14 +233,14 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
     btn.addEventListener('click', async (e) => {
       const idx = e.currentTarget.dataset.index;
       const confirmed = await openConfirm({
-        title: '刪除模板',
-        message: '確定要刪除此模板嗎？',
+        title: '刪除路線圖',
+        message: '確定要刪除此路線圖嗎？',
         isDanger: true
       });
       if (!confirmed) return;
       currentSettings.route_templates.splice(idx, 1);
       await saveSettings();
-      showToast('模板已刪除', 'success');
+      showToast('已刪除', 'success');
     });
   });
 
@@ -254,13 +253,12 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
       const content = `
         <div class="flex flex-col md:flex-row gap-4 mb-2">
           <div class="flex-1 flex flex-col gap-1">
-            <label class="text-sm font-medium text-slate-700">模板名稱</label>
+            <label class="text-sm font-medium text-slate-700">路線圖名稱</label>
             <input type="text" id="edit-tmpl-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.name}">
           </div>
           <div class="flex-1 flex flex-col gap-1">
             <label class="text-sm font-medium text-slate-700">對應類別 (留空為通用)</label>
             
-            <!-- 💡 改為下拉選單 -->
             <select id="edit-tmpl-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none">
               <option value="">(通用預設)</option>
               ${(currentSettings.categories || []).map(c => `<option value="${c}" ${tmpl.category === c ? 'selected' : ''}>${c}</option>`).join('')}
@@ -292,7 +290,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         </div>
       `;
 
-      const { close, element } = openModal({ title: `編輯模板`, content, footer, size: 'max-w-4xl' });
+      const { close, element } = openModal({ title: `編輯路線圖`, content, footer, size: 'max-w-4xl' });
       
       let currentSteps = Array.from(tmpl.steps);
       let sortableInstance = null;
@@ -382,7 +380,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         const newCategory = element.querySelector('#edit-tmpl-category').value.trim();
         
         if (!newName) {
-          showToast('模板名稱不能為空', 'error');
+          showToast('名稱不能為空', 'error');
           return;
         }
 
@@ -391,7 +389,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         currentSettings.route_templates[idx].steps = currentSteps;
         
         await saveSettings();
-        showToast('模板已更新', 'success');
+        showToast('路線圖已更新', 'success');
         close();
       });
     });
@@ -576,6 +574,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1793039000
+V: 1793045000
 W: UPGRADE-007
 */
