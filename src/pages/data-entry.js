@@ -172,6 +172,7 @@ export default {
       schema: currentSettings.schema || [],
       formulas: currentSettings.formulas || {},
       viewConfig: currentSettings.view_configs?.['data-entry'] || [],
+      routeTemplates: currentSettings.route_templates || [], // 💡 傳入製程模板
       layoutMode: currentSettings.form_layout || 'B',
       initialData: null,
       isViewMode: false,
@@ -226,6 +227,7 @@ export default {
       schema: currentSettings.schema || [],
       formulas: currentSettings.formulas || {},
       viewConfig: currentSettings.view_configs?.['data-entry'] || [],
+      routeTemplates: currentSettings.route_templates || [], // 💡 傳入製程模板
       layoutMode: currentSettings.form_layout || 'B',
       initialData: currentOrder,
       isViewMode: isViewMode,
@@ -272,9 +274,14 @@ export default {
 
         // 確認為全新工單
         formData.source = 'manual';
-        formData.status = currentSettings.statuses?.[0] || '排產中';
-        formData.route = currentSettings.statuses ? [...currentSettings.statuses] : [];
-        formData.uploadDate = new Date().toISOString().split('T')[0];
+        
+        // 💡 若未設定路線與狀態，則給予預設值
+        if (!formData.route || formData.route.length === 0) {
+          formData.route = currentSettings.statuses ? [...currentSettings.statuses] : [];
+          formData.status = currentSettings.statuses?.[0] || '排產中';
+        }
+        
+        formData.uploadDate = formData.uploadDate || new Date().toISOString().split('T')[0];
         formData.statusUpdateDate = formData.uploadDate;
 
         await setDocument('work_orders', orderId, formData);
@@ -314,6 +321,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/data-entry.js
-V: 1792993000
+V: 1793026000
 W: UPGRADE-007
 */
