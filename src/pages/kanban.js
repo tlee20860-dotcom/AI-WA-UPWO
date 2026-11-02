@@ -1,10 +1,13 @@
 import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
-import { updateDocument, deleteDocument } from '../db/write.js';
+import { updateDocument, setDocument, deleteDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
+import { parseExcelData } from '../domain/parser.js';
+import { checkDiff } from '../domain/data-diff.js';
+import * as XLSX from 'xlsx';
 import { createIcons } from 'lucide';
 
 let unsubscribe = null;
@@ -14,6 +17,7 @@ let schema = [];
 let viewConfig = {};
 let route_templates = [];
 let settingsCategories = [];
+let diffFields = [];
 
 export default {
   async render() {
@@ -26,13 +30,14 @@ export default {
         viewConfig = settingsDoc.view_configs || {};
         route_templates = settingsDoc.route_templates || [];
         settingsCategories = settingsDoc.categories || [];
+        diffFields = settingsDoc.diff_fields || [];
       }
     } catch (err) {}
 
     renderPageLayout({
       title: '生產進度控制台',
       subtitle: '即時追蹤工單狀態與生產進度',
-      headerActions: '', // 💡 已移除匯入與自動同步按鈕
+      headerActions: '', 
       controls: `
         <div id="category-tabs" class="flex flex-wrap gap-2 mb-4"></div>
       `,
@@ -48,6 +53,7 @@ export default {
           viewConfig = settingsDoc.view_configs || {};
           route_templates = settingsDoc.route_templates || [];
           settingsCategories = settingsDoc.categories || [];
+          diffFields = settingsDoc.diff_fields || [];
           this.updateUI();
         }
       } catch (err) {}
@@ -125,6 +131,128 @@ export default {
     });
   },
 
+  async processExcelFile(file, isAuto = false) {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = async (evt) => {
+        try {
+          const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
+          const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
+          
+          if (jsonData.length === 0) {
+            if (!isAuto) showToast('無資料', 'error');
+            resolve();
+            return;
+          }
+
+          if (!isAuto) showToast('解析中...', 'info');
+          
+          let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
+          let routeTemplates = [];
+          let latestSettings = null;
+          
+          try {
+            latestSettings = await getDocument('settings', 'main');
+            if (latestSettings) { 
+              salesMapping = latestSettings.sales_mapping || []; 
+              statuses = latestSettings.statuses || statuses; 
+              schema = latestSettings.schema || schema; 
+              routeTemplates = latestSettings.route_templates || [];
+              diffFields = latestSettings.diff_fields || [];
+            }
+          } catch (err) {}
+
+          const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
+          let added = 0, updated = 0, diffCount = 0;
+          let newCategoriesAdded = false;
+          let currentCategories = latestSettings && Array.isArray(latestSettings.categories) ? [...latestSettings.categories] : [];
+
+          for (const order of parsed) {
+            // 💡 自動同步類別：若發現新類別，則加入陣列
+            const cat = String(order.data.category || '其他').toUpperCase().trim();
+            if (cat && cat !== '其他' && !currentCategories.includes(cat)) {
+              currentCategories.push(cat);
+              newCategoriesAdded = true;
+            }
+
+            const existing = await getDocument('work_orders', order.id);
+            if (existing) {
+              if (existing.source === 'manual') {
+                const diffResult = checkDiff(existing, order, diffFields);
+                if (diffResult) {
+                  await updateDocument('work_orders', order.id, { diff: diffResult });
+                  diffCount++;
+                }
+              } else {
+                // 防覆寫：不更新 status, route, dueDate (保留手動修改)，但更新 uploadDate (以 Excel 為準)
+                await updateDocument('work_orders', order.id, { 
+                  salesReps: order.salesReps, 
+                  uploadDate: order.uploadDate,
+                  data: order.data 
+                });
+                updated++;
+              }
+            } else {
+              const orderCategory = cat;
+              let matchedTemplate = routeTemplates.find(t => {
+                // 強化比對邏輯，去除空白並轉大寫
+                if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
+                  return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
+                }
+                if (typeof t.category === 'string' && t.category.trim() !== '') {
+                  return t.category.toUpperCase().trim() === orderCategory;
+                }
+                return false;
+              });
+              
+              if (!matchedTemplate) {
+                matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
+              }
+
+              if (!order.route || order.route.length === 0) {
+                if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+                  order.route = matchedTemplate.steps.slice();
+                  order.status = matchedTemplate.steps[0];
+                } else {
+                  order.route = statuses.slice();
+                  order.status = statuses[0];
+                }
+              }
+
+              if (!order.source) order.source = 'excel';
+
+              await setDocument('work_orders', order.id, order);
+              added++;
+            }
+          }
+          
+          // 💡 儲存新增的類別 (使用 updateDocument 避免覆蓋其他設定)
+          if (newCategoriesAdded) {
+            currentCategories.sort();
+            await updateDocument('settings', 'main', { categories: currentCategories });
+            settingsCategories = currentCategories;
+            showToast('已自動新增未知的工單類別', 'info');
+          }
+
+          let msg = isAuto ? '自動同步完成！' : '匯入完成！';
+          if (added > 0 || updated > 0 || diffCount > 0) {
+            msg += ` 新增 ${added}，更新 ${updated}`;
+            if (diffCount > 0) msg += `，比對不符 ${diffCount}`;
+            showToast(msg, 'success');
+          }
+          
+          resolve();
+          
+        } catch (error) {
+          console.error('[Import Error]', error);
+          if (!isAuto) showToast(`失敗: ${error.message}`, 'error');
+          resolve();
+        }
+      };
+      reader.readAsArrayBuffer(file);
+    });
+  },
+
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-kanban', this.updateUI.bind(this));
@@ -134,6 +262,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1793053000
+V: 1793071000
 W: UPGRADE-007
 */
