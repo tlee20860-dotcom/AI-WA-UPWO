@@ -1,7 +1,7 @@
 import { AppState } from '../config/state.js';
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu, FileEdit, Search, Sliders } from 'lucide';
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu, FileEdit, Search, Sliders, Package, Shield } from 'lucide';
 
-// 💡 更新：移除 data-entry，加入 isEnabled 屬性
+// 💡 更新：加入四大設定中心的選單與圖示
 const ALL_ROUTES = {
   kanban: { label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'viewer'] },
   search: { label: '全域搜尋', icon: 'search', roles: ['admin', 'viewer'] },
@@ -10,8 +10,10 @@ const ALL_ROUTES = {
   category: { label: '類別視圖', icon: 'layers', roles: ['admin', 'viewer'] },
   salesperson: { label: '銷售員', icon: 'users', roles: ['admin', 'viewer', 'sales'] },
   area: { label: '生產區域', icon: 'map-pin', roles: ['admin', 'viewer', 'worker'] },
-  settings: { label: '生產設定', icon: 'settings', roles: ['admin'] },
-  'settings-form': { label: '表單設定', icon: 'sliders', roles: ['admin'] },
+  'settings-material': { label: '物料管理', icon: 'package', roles: ['admin'] },
+  settings: { label: '生產管理設定', icon: 'settings', roles: ['admin'] },
+  'settings-form': { label: '工單管理設定', icon: 'sliders', roles: ['admin'] },
+  'settings-system': { label: '系統管理設定', icon: 'shield', roles: ['admin'] },
   'admin-data': { label: '資料總管', icon: 'database', roles: ['admin'] }
 };
 
@@ -113,7 +115,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
   `;
 
   createIcons({
-    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin, Menu, FileEdit, Search, Sliders },
+    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin, Menu, FileEdit, Search, Sliders, Package, Shield },
     attrs: { class: 'w-5 h-5' }
   });
 
@@ -181,7 +183,6 @@ function renderNavBar(user, onNavigate, closeDrawer) {
   const role = user.role;
 
   navConfig.forEach(item => {
-    // 💡 若頁面被停用，則完全不渲染
     if (item.isEnabled === false) return;
 
     const routeDef = ALL_ROUTES[item.id];
@@ -218,7 +219,7 @@ function renderNavBar(user, onNavigate, closeDrawer) {
   });
 
   createIcons({
-    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin, FileEdit, Search, Sliders },
+    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin, FileEdit, Search, Sliders, Package, Shield },
     attrs: { class: 'w-5 h-5' }
   });
 }
@@ -289,6 +290,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1793031000
+V: 1793059000
 W: UPGRADE-007
 */
