@@ -84,11 +84,23 @@ export function renderOrderEditor({
             
             // 特殊處理：生產流程 (route) 渲染為下拉選單
             if (f.key === 'route') {
+              // 💡 修正 1：取得工單類別
+              const orderCategory = (initialData && initialData.data && initialData.data.category) 
+                ? String(initialData.data.category).toUpperCase() 
+                : (formData['id'] ? String(formData['id']).match(/^[a-zA-Z]+/)?.[0]?.toUpperCase() : '其他') || '其他';
+
+              // 💡 修正 2：嚴格過濾符合該類別的模板
+              const availableTemplates = routeTemplates.filter(t => {
+                if (!t.categories || t.categories.length === 0) return true; // 通用
+                if (Array.isArray(t.categories)) return t.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
+                if (typeof t.category === 'string' && t.category.trim() !== '') return t.category.toUpperCase() === orderCategory;
+                return false;
+              });
+
               let currentMatchName = '';
               if (initialData && initialData.route) {
-                // 💡 修正：先正規化再比對
                 const currentRouteArr = normalizeRoute(initialData.route);
-                const matched = routeTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(currentRouteArr));
+                const matched = availableTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(currentRouteArr));
                 if (matched) currentMatchName = matched.name;
               }
 
@@ -99,8 +111,8 @@ export function renderOrderEditor({
                 <div class="flex flex-col gap-1.5">
                   <label class="text-sm font-medium text-slate-700">${f.label}</label>
                   <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
-                    <option value="">(自訂流程 / 預設)</option>
-                    ${routeTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                    <option value="" ${currentMatchName === '' ? 'selected' : ''}>(自訂流程 / 預設)</option>
+                    ${availableTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
                   </select>
                 </div>
               `;
@@ -137,13 +149,11 @@ export function renderOrderEditor({
   const bodyEl = container.querySelector('#editor-body');
   const inputs = bodyEl.querySelectorAll('input, select, textarea');
   
-  // 4.1 即時計算與連動
   const handleInputChange = (e) => {
     const target = e.target;
     const key = target.dataset.key;
     if (!key) return;
 
-    // 處理生產流程變更
     if (key === 'route') {
       const templateName = target.value;
       if (templateName) {
@@ -164,10 +174,8 @@ export function renderOrderEditor({
 
     formData[key] = target.value;
 
-    // 如果有設定公式，執行計算
     if (formulas && Object.keys(formulas).length > 0) {
       const results = evaluate(formulas, formData);
-      
       Object.entries(results).forEach(([resKey, resVal]) => {
         const resInput = bodyEl.querySelector(`[data-key="${resKey}"]`);
         if (resInput && resInput.value !== resVal) {
@@ -185,12 +193,10 @@ export function renderOrderEditor({
     input.addEventListener('change', handleInputChange);
   });
 
-  // 4.2 取消按鈕
   container.querySelector('#editor-btn-cancel')?.addEventListener('click', () => {
     if (onCancel) onCancel();
   });
 
-  // 4.3 儲存按鈕
   container.querySelector('#editor-btn-save')?.addEventListener('click', async () => {
     if (onSave) {
       const finalData = Object.assign({}, initialData); 
@@ -226,6 +232,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793035000
+V: 1793041000
 W: UPGRADE-007
 */
