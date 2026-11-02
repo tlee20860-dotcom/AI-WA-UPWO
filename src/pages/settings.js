@@ -657,15 +657,20 @@ export default {
               }
             } else {
               // 💡 新增工單：套用 Excel 的狀態與路線
-              const orderCategory = order.data.category || '其他';
+              const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
               let matchedTemplate = (latestSettings.route_templates || []).find(t => {
-                if (t.categories && t.categories.length > 0) return t.categories.includes(orderCategory);
-                if (t.category) return t.category === orderCategory;
+                // 💡 修正：強化比對邏輯，去除空白並轉大寫
+                if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
+                  return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
+                }
+                if (typeof t.category === 'string' && t.category.trim() !== '') {
+                  return t.category.toUpperCase().trim() === orderCategory;
+                }
                 return false;
               });
               
               if (!matchedTemplate) {
-                matchedTemplate = (latestSettings.route_templates || []).find(t => (!t.categories || t.categories.length === 0) && !t.category);
+                matchedTemplate = (latestSettings.route_templates || []).find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
               }
 
               if (!order.route || order.route.length === 0) {
@@ -717,6 +722,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793016000
+V: 1793040000
 W: UPGRADE-007
 */
