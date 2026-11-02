@@ -1,4 +1,29 @@
+import { AppState } from '../config/state.js'; // 💡 新增引入
 import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu, FileEdit, Search, Sliders } from 'lucide';
+
+// 💡 定義所有可能的頁面與權限（作為白名單）
+const ALL_ROUTES = {
+  kanban: { label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'viewer'] },
+  search: { label: '全域搜尋', icon: 'search', roles: ['admin', 'viewer'] },
+  'data-entry': { label: '資料錄入', icon: 'file-edit', roles: ['admin'] },
+  table: { label: '管理總表', icon: 'table', roles: ['admin', 'viewer'] },
+  overview: { label: '總狀態', icon: 'pie-chart', roles: ['admin', 'viewer'] },
+  category: { label: '類別視圖', icon: 'layers', roles: ['admin', 'viewer'] },
+  salesperson: { label: '銷售員', icon: 'users', roles: ['admin', 'viewer', 'sales'] },
+  area: { label: '生產區域', icon: 'map-pin', roles: ['admin', 'viewer', 'worker'] },
+  settings: { label: '生產設定', icon: 'settings', roles: ['admin'] },
+  'settings-form': { label: '表單設定', icon: 'sliders', roles: ['admin'] },
+  'admin-data': { label: '資料總管', icon: 'database', roles: ['admin'] }
+};
+
+// 💡 預設備用配置（當資料庫尚未回傳時使用）
+const DEFAULT_NAV_CONFIG = Object.keys(ALL_ROUTES).map(key => ({
+  id: key,
+  label: ALL_ROUTES[key].label,
+  icon: ALL_ROUTES[key].icon,
+  showSidebar: true,
+  showTop: ['kanban', 'table', 'overview', 'category', 'salesperson'].includes(key)
+}));
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
@@ -19,7 +44,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
     <div class="flex h-screen w-full bg-bg overflow-hidden">
       <!-- 側邊欄 (Desktop) -->
       <aside id="desktop-sidebar" class="w-64 bg-white border-r border-slate-200/50 flex-col hidden md:flex z-20 ${isCollapsed ? 'md:hidden' : ''}">
-        <div class="h-16 flex items-center justify-between px-4 border-b border-slate-100">
+        <div class="h-16 flex items-center justify-between px-4 border-b border-slate-100 flex-shrink-0">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm shadow-brand/30">
               <i data-lucide="layers" class="w-5 h-5"></i>
@@ -32,10 +57,10 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
         </div>
         
         <nav class="flex-1 py-4 px-3 flex flex-col gap-1 overflow-y-auto" id="sidebar-nav">
-          <!-- 導覽按鈕由 renderNavItems 注入 -->
+          <!-- 導覽按鈕由 renderNavBar 注入 -->
         </nav>
 
-        <div class="p-4 border-t border-slate-100">
+        <div class="p-4 border-t border-slate-100 flex-shrink-0">
           <button id="btn-logout" class="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-rose-50 hover:text-rose-600 transition-colors">
             <i data-lucide="log-out" class="w-5 h-5"></i>
             登出系統
@@ -46,7 +71,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
       <!-- 主內容區 -->
       <div class="flex-1 flex flex-col h-full overflow-hidden relative">
         <!-- 頂部導覽 (Mobile & Desktop) -->
-        <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-6 z-10">
+        <header class="h-16 bg-white/80 backdrop-blur-md border-b border-slate-200/50 flex items-center justify-between px-4 sm:px-6 z-10 flex-shrink-0">
           <!-- 左側：選單按鈕與 Logo -->
           <div class="flex items-center gap-3">
             <!-- 桌面版展開側欄按鈕 (僅在收合時顯示) -->
@@ -66,9 +91,9 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
             </div>
           </div>
 
-          <!-- 中間：iOS Segmented Control (視圖切換) - Desktop (僅 admin/viewer 顯示) -->
+          <!-- 中間：iOS Segmented Control (視圖切換) - Desktop -->
           <div class="hidden md:flex segmented-control" id="top-segmented-control">
-            <!-- 由 renderNavItems 動態注入 -->
+            <!-- 由 renderNavBar 動態注入 -->
           </div>
 
           <!-- 右側：使用者資訊 -->
@@ -94,7 +119,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
     <div id="mobile-drawer" class="fixed inset-0 z-50 hidden">
       <div class="absolute inset-0 bg-black/40 backdrop-blur-sm transition-opacity" id="drawer-overlay"></div>
       <aside class="absolute left-0 top-0 bottom-0 w-64 bg-white shadow-2xl transform -translate-x-full transition-transform duration-300 flex flex-col" id="drawer-panel">
-        <div class="h-16 flex items-center px-6 border-b border-slate-100 justify-between">
+        <div class="h-16 flex items-center px-6 border-b border-slate-100 justify-between flex-shrink-0">
           <div class="flex items-center gap-3">
             <div class="w-8 h-8 rounded-lg bg-brand flex items-center justify-center text-white shadow-sm">
               <i data-lucide="layers" class="w-5 h-5"></i>
@@ -106,7 +131,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
           </button>
         </div>
         <nav class="flex-1 py-4 px-3 flex flex-col gap-1 overflow-y-auto" id="mobile-sidebar-nav">
-          <!-- 由 renderNavItems 注入 -->
+          <!-- 由 renderNavBar 注入 -->
         </nav>
       </aside>
     </div>
@@ -162,77 +187,84 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
   overlay?.addEventListener('click', closeDrawer);
 
   // 渲染導覽選單
-  renderNavItems(user, onNavigate, closeDrawer);
+  renderNavBar(user, onNavigate, closeDrawer);
+
+  // 💡 監聽導覽選單更新事件，即時重繪選單
+  window.addEventListener('nav-config-updated', () => {
+    renderNavBar(user, onNavigate, closeDrawer);
+    // 更新高亮
+    const currentHash = window.location.hash.replace('#', '') || 'kanban';
+    updateNavbar(currentHash);
+  });
 }
 
 /**
- * 繪製導覽選單項目
- * 依使用者 role 過濾顯示
+ * 根據 AppState 的配置渲染導覽選單
  */
-function renderNavItems(user, onNavigate, closeDrawer) {
-  const role = user.role;
-
-  const routes = [
-    { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'viewer'] },
-    { id: 'search', label: '全域搜尋', icon: 'search', roles: ['admin', 'viewer'] },
-    { id: 'data-entry', label: '資料錄入', icon: 'file-edit', roles: ['admin'] },
-    { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'viewer'] },
-    { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'viewer'] },
-    { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'viewer'] },
-    { id: 'salesperson', label: '銷售員', icon: 'users', roles: ['admin', 'viewer', 'sales'] },
-    { id: 'area', label: '生產區域', icon: 'map-pin', roles: ['admin', 'viewer', 'worker'] },
-    { id: 'settings', label: '生產設定', icon: 'settings', roles: ['admin'] }, // 💡 修改名稱
-    { id: 'settings-form', label: '表單設定', icon: 'sliders', roles: ['admin'] }, // 💡 新增
-    { id: 'admin-data', label: '資料總管', icon: 'database', roles: ['admin'] }
-  ];
-
+function renderNavBar(user, onNavigate, closeDrawer) {
   const sidebarNav = document.getElementById('sidebar-nav');
   const topControl = document.getElementById('top-segmented-control');
   const mobileNav = document.getElementById('mobile-sidebar-nav');
 
-  routes.forEach(route => {
-    if (!route.roles.includes(role)) return;
+  if (!sidebarNav || !topControl || !mobileNav) return;
 
-    // 側邊欄項目
-    if (sidebarNav) {
+  // 清空舊的選單
+  sidebarNav.innerHTML = '';
+  topControl.innerHTML = '';
+  mobileNav.innerHTML = '';
+
+  // 取得配置 (若無則使用預設)
+  const navConfig = AppState.getNavConfig() || DEFAULT_NAV_CONFIG;
+  const role = user.role;
+
+  navConfig.forEach(item => {
+    // 1. 檢查該頁面是否存在於白名單
+    const routeDef = ALL_ROUTES[item.id];
+    if (!routeDef) return;
+
+    // 2. 檢查權限
+    if (!routeDef.roles.includes(role)) return;
+
+    // 3. 渲染側邊欄與手機選單
+    if (item.showSidebar) {
+      // 桌面側邊欄
       const btn = document.createElement('button');
       btn.className = 'nav-item flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-brand transition-colors';
-      btn.dataset.route = route.id;
+      btn.dataset.route = item.id;
       btn.innerHTML = `
-        <i data-lucide="${route.icon}" class="w-5 h-5"></i>
-        ${route.label}
+        <i data-lucide="${item.icon}" class="w-5 h-5"></i>
+        ${item.label}
       `;
-      btn.addEventListener('click', () => onNavigate(route.id));
+      btn.addEventListener('click', () => onNavigate(item.id));
       sidebarNav.appendChild(btn);
-    }
 
-    // 手機版側邊欄項目
-    if (mobileNav) {
-      const btn = document.createElement('button');
-      btn.className = 'nav-item flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-brand transition-colors';
-      btn.dataset.route = route.id;
-      btn.innerHTML = `
-        <i data-lucide="${route.icon}" class="w-5 h-5"></i>
-        ${route.label}
+      // 手機側邊欄
+      const mobileBtn = document.createElement('button');
+      mobileBtn.className = 'nav-item flex items-center gap-3 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-slate-600 hover:bg-slate-50 hover:text-brand transition-colors';
+      mobileBtn.dataset.route = item.id;
+      mobileBtn.innerHTML = `
+        <i data-lucide="${item.icon}" class="w-5 h-5"></i>
+        ${item.label}
       `;
-      btn.addEventListener('click', () => {
-        onNavigate(route.id);
+      mobileBtn.addEventListener('click', () => {
+        onNavigate(item.id);
         if (typeof closeDrawer === 'function') closeDrawer();
       });
-      mobileNav.appendChild(btn);
+      mobileNav.appendChild(mobileBtn);
     }
 
-    // 頂部 Segmented Control 項目 (排除 admin-data, area, data-entry, search, settings, settings-form 以免太擠)
-    if (topControl && !['admin-data', 'area', 'data-entry', 'search', 'settings', 'settings-form'].includes(route.id) && route.roles.includes('admin')) {
+    // 4. 渲染頂部置頂導航
+    if (item.showTop) {
       const segment = document.createElement('div');
       segment.className = 'segment-btn';
-      segment.dataset.route = route.id;
-      segment.textContent = route.label;
-      segment.addEventListener('click', () => onNavigate(route.id));
+      segment.dataset.route = item.id;
+      segment.textContent = item.label;
+      segment.addEventListener('click', () => onNavigate(item.id));
       topControl.appendChild(segment);
     }
   });
 
+  // 重新渲染圖示
   createIcons({
     icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin, FileEdit, Search, Sliders },
     attrs: { class: 'w-5 h-5' }
@@ -328,6 +360,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1793011000
+V: 1793023000
 W: UPGRADE-007
 */
