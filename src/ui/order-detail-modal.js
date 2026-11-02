@@ -44,7 +44,8 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
     formulas: currentSettings.formulas || {},
     viewConfig: currentSettings.view_configs?.['data-entry'] || currentSettings.view_configs?.['table'] || [],
     routeTemplates: currentSettings.route_templates || [],
-    materials: currentSettings.materials || [], // 💡 傳入物料主檔
+    materials: currentSettings.materials || [],
+    suppliers: currentSettings.suppliers || [], // 💡 傳入外發供應商主檔
     layoutMode: 'A', // 彈窗內預設用平鋪模式最順暢
     initialData: initialData,
     isViewMode: false, // 直接進入編輯模式
@@ -78,7 +79,7 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
           showToast('工單新增成功', 'success');
         } else {
           // 更新
-          // 注意：formData 包含了從 order-editor 傳來的所有欄位，其中也包含 materials
+          // 注意：formData 包含了從 order-editor 傳來的所有欄位，其中也包含 materials 與 supplierName
           // 為了避免覆蓋 Excel 匯入的 uploadDate，如果工單來源是 excel，則不更新 uploadDate
           const existing = await getDocument('work_orders', targetId);
           if (existing && existing.source === 'excel') {
@@ -104,6 +105,6 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
 /*
 F: AI-WA-UPWO/src/ui/order-detail-modal.js
-V: 1793062000
+V: 1793068000
 W: UPGRADE-007
 */
