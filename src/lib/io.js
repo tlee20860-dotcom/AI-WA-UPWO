@@ -45,7 +45,7 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
       '狀態': order.status,
       '製程路線': formatRoute(order.route),
       '銷售員': (order.salesReps || []).join(', '),
-      '上傳日期': order.uploadDate || '',
+      '開單日期': order.uploadDate || '', // 💡 名詞替換
       '交貨日期': order.dueDate || '',
       '狀態更新日': order.statusUpdateDate || '',
       '來源': order.source === 'manual' ? '手動' : 'Excel',
@@ -84,7 +84,7 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
       { key: 'id', label: '工單號碼' },
       { key: 'status', label: '狀態' },
       { key: 'salesReps', label: '銷售員' },
-      { key: 'uploadDate', label: '上傳日期' },
+      { key: 'uploadDate', label: '開單日期' }, // 💡 名詞替換
       { key: 'dueDate', label: '交貨日期' }
     ];
     schema.filter(f => !f.isSystem).forEach(f => targetFields.push(f));
@@ -105,7 +105,7 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
         } else if (f.key === 'salesReps') {
           row['銷售員'] = (order.salesReps || []).join(', ');
         } else if (f.key === 'uploadDate') {
-          row['上傳日期'] = order.uploadDate || '';
+          row['開單日期'] = order.uploadDate || ''; // 💡 名詞替換
         } else if (f.key === 'dueDate') {
           row['交貨日期'] = order.dueDate || '';
         } else if (f.key === 'route') {
@@ -227,6 +227,6 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
 
 /*
 F: AI-WA-UPWO/src/lib/io.js
-V: 1793013000
+V: 1793051000
 W: UPGRADE-007
 */
