@@ -55,14 +55,14 @@ export function renderOrderEditor({
     }
   });
 
-  // 3. 繪製 HTML (移除強制分類的 Tabs，直接平鋪以保證顯示所有欄位)
+  // 3. 繪製 HTML (移除強制高度，讓外層 Modal 控制滾動)
   let html = `
-    <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden flex flex-col h-full">
+    <div class="bg-transparent flex flex-col">
       <!-- Header (固定) -->
-      <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between bg-slate-50/50 flex-shrink-0 gap-3">
+      <div class="px-2 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between flex-shrink-0 gap-3">
         <div class="flex items-center gap-3">
-          <h2 class="text-lg font-bold text-slate-800">${initialData ? '編輯工單' : '新增工單'}</h2>
-          <span class="text-xs px-2 py-0.5 bg-slate-200 text-slate-600 rounded">${isViewMode ? '檢視模式' : '編輯模式'}</span>
+          <h2 class="text-lg font-bold text-slate-800">${initialData ? '編輯工單資料' : '新增工單資料'}</h2>
+          <span class="text-xs px-2 py-0.5 bg-slate-100 border border-slate-200 text-slate-600 rounded">${isViewMode ? '檢視模式' : '編輯模式'}</span>
         </div>
         <div class="flex items-center gap-2">
           <button id="editor-btn-cancel" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-colors">
@@ -74,56 +74,53 @@ export function renderOrderEditor({
         </div>
       </div>
 
-      <!-- Body (滾動) -->
-      <div class="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30 min-h-0 relative" id="editor-body">
-        <div class="max-w-5xl mx-auto">
-          <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-            ${displayFields.map(f => {
-              const value = formData[f.key] !== undefined ? formData[f.key] : '';
-              
-              // 💡 特殊處理：生產流程 (route) 渲染為下拉選單
-              if (f.key === 'route') {
-                // 找出當前路線對應的模板名稱
-                let currentMatchName = '';
-                if (initialData && initialData.route) {
-                  const matched = routeTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(initialData.route));
-                  if (matched) currentMatchName = matched.name;
-                }
-
-                const disabledAttr = isViewMode ? 'disabled' : '';
-                const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
-
-                return `
-                  <div class="flex flex-col gap-1.5">
-                    <label class="text-sm font-medium text-slate-700">${f.label}</label>
-                    <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
-                      <option value="">(自訂流程 / 預設)</option>
-                      ${routeTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
-                    </select>
-                  </div>
-                `;
+      <!-- Body (不設滾動，由 Modal 提供) -->
+      <div class="py-4 relative" id="editor-body">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+          ${displayFields.map(f => {
+            const value = formData[f.key] !== undefined ? formData[f.key] : '';
+            
+            // 特殊處理：生產流程 (route) 渲染為下拉選單
+            if (f.key === 'route') {
+              let currentMatchName = '';
+              if (initialData && initialData.route) {
+                const matched = routeTemplates.find(t => JSON.stringify(t.steps) === JSON.stringify(initialData.route));
+                if (matched) currentMatchName = matched.name;
               }
 
-              // 一般欄位渲染
-              const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
               const disabledAttr = isViewMode ? 'disabled' : '';
               const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
 
               return `
                 <div class="flex flex-col gap-1.5">
                   <label class="text-sm font-medium text-slate-700">${f.label}</label>
-                  <input 
-                    type="${inputType}" 
-                    data-key="${f.key}" 
-                    value="${value}" 
-                    class="${baseClass}" 
-                    placeholder="請輸入${f.label}"
-                    ${disabledAttr}
-                  >
+                  <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
+                    <option value="">(自訂流程 / 預設)</option>
+                    ${routeTemplates.map(t => `<option value="${t.name}" ${t.name === currentMatchName ? 'selected' : ''}>${t.name}</option>`).join('')}
+                  </select>
                 </div>
               `;
-            }).join('')}
-          </div>
+            }
+
+            // 一般欄位渲染
+            const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
+            const disabledAttr = isViewMode ? 'disabled' : '';
+            const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
+
+            return `
+              <div class="flex flex-col gap-1.5">
+                <label class="text-sm font-medium text-slate-700">${f.label}</label>
+                <input 
+                  type="${inputType}" 
+                  data-key="${f.key}" 
+                  value="${value}" 
+                  class="${baseClass}" 
+                  placeholder="請輸入${f.label}"
+                  ${disabledAttr}
+                >
+              </div>
+            `;
+          }).join('')}
         </div>
       </div>
     </div>
@@ -142,16 +139,13 @@ export function renderOrderEditor({
     const key = target.dataset.key;
     if (!key) return;
 
-    // 💡 處理生產流程變更
+    // 處理生產流程變更
     if (key === 'route') {
       const templateName = target.value;
       if (templateName) {
         const matchedTemplate = routeTemplates.find(t => t.name === templateName);
         if (matchedTemplate && matchedTemplate.steps) {
-          // 將狀態設為模板的第一步
           formData['status'] = matchedTemplate.steps[0];
-          
-          // 更新畫面中的狀態欄位 (如果有顯示)
           const statusInput = bodyEl.querySelector(`[data-key="status"]`);
           if (statusInput) {
             statusInput.value = formData['status'];
@@ -161,7 +155,7 @@ export function renderOrderEditor({
           showToast(`已套用流程：${templateName}`, 'info');
         }
       }
-      return; // 處理完畢，不進入公式計算
+      return;
     }
 
     formData[key] = target.value;
@@ -170,19 +164,13 @@ export function renderOrderEditor({
     if (formulas && Object.keys(formulas).length > 0) {
       const results = evaluate(formulas, formData);
       
-      // 將計算結果寫回表單（如果該欄位有在畫面上）
       Object.entries(results).forEach(([resKey, resVal]) => {
         const resInput = bodyEl.querySelector(`[data-key="${resKey}"]`);
-        if (resInput) {
-          // 避免無限迴圈，只在值不同時更新
-          if (resInput.value !== resVal) {
-            resInput.value = resVal;
-            formData[resKey] = resVal; // 同步更新記憶體資料
-            
-            // 加上視覺提示
-            resInput.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
-            setTimeout(() => resInput.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200'), 600);
-          }
+        if (resInput && resInput.value !== resVal) {
+          resInput.value = resVal;
+          formData[resKey] = resVal;
+          resInput.classList.add('bg-emerald-50', 'text-emerald-700', 'border-emerald-200');
+          setTimeout(() => resInput.classList.remove('bg-emerald-50', 'text-emerald-700', 'border-emerald-200'), 600);
         }
       });
     }
@@ -190,7 +178,7 @@ export function renderOrderEditor({
 
   inputs.forEach(input => {
     input.addEventListener('input', handleInputChange);
-    input.addEventListener('change', handleInputChange); // 處理 select 和 date
+    input.addEventListener('change', handleInputChange);
   });
 
   // 4.2 取消按鈕
@@ -201,14 +189,10 @@ export function renderOrderEditor({
   // 4.3 儲存按鈕
   container.querySelector('#editor-btn-save')?.addEventListener('click', async () => {
     if (onSave) {
-      // 收集所有欄位資料（包含隱藏的）
       const finalData = Object.assign({}, initialData); 
-      
-      // 確保核心結構存在
       if (!finalData.data) finalData.data = {};
-      if (!finalData.id) finalData.id = formData['id']; // 必填
+      if (!finalData.id) finalData.id = formData['id'];
 
-      // 💡 處理製程路線與狀態
       const selectedTemplateName = bodyEl.querySelector('[data-key="route"]')?.value;
       if (selectedTemplateName) {
         const matchedTemplate = routeTemplates.find(t => t.name === selectedTemplateName);
@@ -216,22 +200,13 @@ export function renderOrderEditor({
           finalData.route = matchedTemplate.steps;
         }
       } else {
-        // 若選自訂，則保留原本的路線 (如果是編輯模式)，或是留空交由 data-entry.js 處理
-        if (!finalData.route) {
-           finalData.route = []; 
-        }
+        if (!finalData.route) finalData.route = []; 
       }
       
-      // 確保有狀態 (若剛剛有套用模板，formData 裡已經有更新過)
-      if (formData['status']) {
-        finalData.status = formData['status'];
-      }
+      if (formData['status']) finalData.status = formData['status'];
 
-      // 將表單當前值寫入
       displayFields.forEach(f => {
-        // 跳過 route 與 status，因為上面已經處理過
         if (f.key === 'route' || f.key === 'status') return;
-
         const val = formData[f.key];
         if (f.isSystem) {
           finalData[f.key] = val;
@@ -247,6 +222,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793027000
+V: 1793034000
 W: UPGRADE-007
 */
