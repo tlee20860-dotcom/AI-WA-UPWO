@@ -1,4 +1,4 @@
-import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu, FileEdit } from 'lucide';
+import { createIcons, Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Activity, ClipboardList, Database, MapPin, Menu, FileEdit, Search } from 'lucide';
 
 /**
  * 繪製 App Shell 骨架（側邊欄、頂部導覽列）
@@ -114,7 +114,7 @@ export function renderAppShell({ user, onLogout, onNavigate }) {
 
   // 渲染圖示
   createIcons({
-    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin, Menu, FileEdit },
+    icons: { Layers, Bell, LogOut, LayoutDashboard, Table, PieChart, Users, Settings, Database, MapPin, Menu, FileEdit, Search },
     attrs: { class: 'w-5 h-5' }
   });
 
@@ -174,7 +174,8 @@ function renderNavItems(user, onNavigate, closeDrawer) {
 
   const routes = [
     { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', roles: ['admin', 'viewer'] },
-    { id: 'data-entry', label: '資料錄入', icon: 'file-edit', roles: ['admin'] }, // 新增
+    { id: 'search', label: '全域搜尋', icon: 'search', roles: ['admin', 'viewer'] }, // 💡 新增
+    { id: 'data-entry', label: '資料錄入', icon: 'file-edit', roles: ['admin'] },
     { id: 'table', label: '管理總表', icon: 'table', roles: ['admin', 'viewer'] },
     { id: 'overview', label: '總狀態', icon: 'pie-chart', roles: ['admin', 'viewer'] },
     { id: 'category', label: '類別視圖', icon: 'layers', roles: ['admin', 'viewer'] },
@@ -220,8 +221,8 @@ function renderNavItems(user, onNavigate, closeDrawer) {
       mobileNav.appendChild(btn);
     }
 
-    // 頂部 Segmented Control 項目 (排除 admin-data, area, data-entry 以免太擠，且僅限 admin/viewer)
-    if (topControl && route.id !== 'admin-data' && route.id !== 'area' && route.id !== 'data-entry' && route.roles.includes('admin')) {
+    // 頂部 Segmented Control 項目 (排除 admin-data, area, data-entry, search 以免太擠，且僅限 admin/viewer)
+    if (topControl && route.id !== 'admin-data' && route.id !== 'area' && route.id !== 'data-entry' && route.id !== 'search' && route.roles.includes('admin')) {
       const segment = document.createElement('div');
       segment.className = 'segment-btn';
       segment.dataset.route = route.id;
@@ -232,7 +233,7 @@ function renderNavItems(user, onNavigate, closeDrawer) {
   });
 
   createIcons({
-    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin, FileEdit },
+    icons: { LayoutDashboard, Table, PieChart, Users, Settings, Layers, Database, MapPin, FileEdit, Search },
     attrs: { class: 'w-5 h-5' }
   });
 }
@@ -326,6 +327,6 @@ export function renderPageLayout({ title, subtitle = '', headerActions = '', sta
 
 /*
 F: AI-WA-UPWO/src/ui/layout.js
-V: 1792995000
+V: 1793007000
 W: UPGRADE-007
 */
