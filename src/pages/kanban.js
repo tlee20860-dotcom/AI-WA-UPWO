@@ -25,6 +25,19 @@ let directoryHandle = null;
 let lastSyncTime = 0;
 let isSyncing = false;
 
+/**
+ * 輔助函式：將可能是字串或陣列的 route 統一轉為陣列
+ */
+function normalizeRoute(route) {
+  if (Array.isArray(route)) return route;
+  if (typeof route === 'string') {
+    if (route.includes(',')) return route.split(',').map(s => s.trim()).filter(Boolean);
+    if (route.includes('→')) return route.split('→').map(s => s.trim()).filter(Boolean);
+    return [route.trim()];
+  }
+  return [];
+}
+
 export default {
   async render() {
     if (!AppState.getUser()) return;
@@ -40,7 +53,6 @@ export default {
       }
     } catch (err) {}
 
-    // 檢查瀏覽器是否支援 File System Access API
     const isSupported = 'showDirectoryPicker' in window;
 
     renderPageLayout({
@@ -65,7 +77,6 @@ export default {
       listContainerId: 'kanban-container'
     });
 
-    // 綁定手動匯入
     document.getElementById('btn-import-excel')?.addEventListener('click', () => document.getElementById('excel-import-input').click());
     document.getElementById('excel-import-input')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -73,10 +84,8 @@ export default {
       e.target.value = '';
     });
 
-    // 綁定自動同步
     document.getElementById('btn-auto-sync')?.addEventListener('click', () => this.setupAutoSync());
 
-    // 視窗切換焦點時，立即觸發一次檢查
     window.addEventListener('focus', this.checkForUpdates.bind(this));
 
     window.addEventListener('refresh-kanban', this.updateUI.bind(this));
@@ -168,9 +177,6 @@ export default {
     });
   },
 
-  /**
-   * 設定自動同步機制
-   */
   async setupAutoSync() {
     if (!('showDirectoryPicker' in window)) {
       showToast('您的瀏覽器不支援自動同步功能，請改用手動匯入', 'error');
@@ -178,11 +184,7 @@ export default {
     }
 
     try {
-      // 請求資料夾權限
-      directoryHandle = await window.showDirectoryPicker({
-        mode: 'read'
-      });
-      
+      directoryHandle = await window.showDirectoryPicker({ mode: 'read' });
       showToast('已綁定資料夾，開始自動監聽更新', 'success');
       
       const btn = document.getElementById('btn-auto-sync');
@@ -192,34 +194,24 @@ export default {
         createIcons({ icons: { RefreshCw }, attrs: { class: 'w-4 h-4' } });
       }
 
-      // 立刻檢查一次
       await this.checkForUpdates();
 
-      // 設定每 2 秒檢查一次
       if (autoSyncInterval) clearInterval(autoSyncInterval);
       autoSyncInterval = setInterval(() => this.checkForUpdates(), 2000);
 
     } catch (err) {
-      if (err.name === 'AbortError') {
-        // 使用者取消選擇，忽略
-        return;
-      }
+      if (err.name === 'AbortError') return;
       console.error('[Auto Sync Error]', err);
       showToast('綁定資料夾失敗，請確認瀏覽器權限', 'error');
     }
   },
 
-  /**
-   * 檢查資料夾內是否有更新的 Excel 檔案
-   */
   async checkForUpdates() {
     if (!directoryHandle || isSyncing) return;
 
     try {
-      // 檢查目前是否還有權限
       const permission = await directoryHandle.queryPermission({ mode: 'read' });
       if (permission !== 'granted') {
-        // 權限遺失，停止同步
         this.stopAutoSync();
         showToast('資料夾授權已失效，請重新點擊「自動同步」', 'error');
         return;
@@ -229,7 +221,6 @@ export default {
       let latestFile = null;
       let latestTime = lastSyncTime;
 
-      // 掃描資料夾內的檔案
       for await (const entry of directoryHandle.values()) {
         if (entry.kind === 'file' && (entry.name.endsWith('.xlsx') || entry.name.endsWith('.xls'))) {
           const file = await entry.getFile();
@@ -253,9 +244,6 @@ export default {
     }
   },
 
-  /**
-   * 停止自動同步
-   */
   stopAutoSync() {
     if (autoSyncInterval) {
       clearInterval(autoSyncInterval);
@@ -272,9 +260,6 @@ export default {
     }
   },
 
-  /**
-   * 處理 Excel 檔案（手動與自動共用）
-   */
   async processExcelFile(file, isAuto = false) {
     const reader = new FileReader();
     reader.onload = async (evt) => {
@@ -308,17 +293,13 @@ export default {
         for (const order of parsed) {
           const existing = await getDocument('work_orders', order.id);
           if (existing) {
-            // 💡 檢查是否為手動工單
             if (existing.source === 'manual') {
-              // 手動工單：比對差異，不覆蓋資料
               const diffResult = checkDiff(existing, order, diffFields);
               if (diffResult) {
                 await updateDocument('work_orders', order.id, { diff: diffResult });
                 diffCount++;
               }
             } else {
-              // Excel 工單：防覆寫，只更新 Excel 來源欄位與動態欄位
-              // 💡 不更新 status, route, dueDate, uploadDate (保留手動修改的進度與日期)
               await updateDocument('work_orders', order.id, { 
                 salesReps: order.salesReps, 
                 data: order.data 
@@ -326,19 +307,23 @@ export default {
               updated++;
             }
           } else {
-            // 新增工單：套用 Excel 的狀態與路線
-            const orderCategory = order.data.category || '其他';
+            const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
             let matchedTemplate = routeTemplates.find(t => {
-              if (t.categories && t.categories.length > 0) return t.categories.includes(orderCategory);
-              if (t.category) return t.category === orderCategory;
+              // 💡 修正：強化比對邏輯，去除空白並轉大寫
+              if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
+                return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
+              }
+              if (typeof t.category === 'string' && t.category.trim() !== '') {
+                return t.category.toUpperCase().trim() === orderCategory;
+              }
               return false;
             });
             
             if (!matchedTemplate) {
-              matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && !t.category);
+              // Fallback 到沒有設定類別的通用模板
+              matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
             }
 
-            // 若 Excel 沒有提供路線，才使用模板或預設
             if (!order.route || order.route.length === 0) {
               if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
                 order.route = matchedTemplate.steps.slice();
@@ -349,7 +334,6 @@ export default {
               }
             }
 
-            // 確保來源標記 (若 Excel 未指定)
             if (!order.source) order.source = 'excel';
 
             await setDocument('work_orders', order.id, order);
@@ -357,7 +341,6 @@ export default {
           }
         }
         
-        // 💡 組合提示訊息
         let msg = isAuto ? '自動同步完成！' : '匯入完成！';
         msg += ` 新增 ${added}，更新 ${updated}`;
         if (diffCount > 0) {
@@ -376,7 +359,7 @@ export default {
 
   destroy() {
     if (unsubscribe) unsubscribe();
-    this.stopAutoSync(); // 清理自動同步定時器
+    this.stopAutoSync();
     window.removeEventListener('focus', this.checkForUpdates.bind(this));
     window.removeEventListener('refresh-kanban', this.updateUI.bind(this));
     window.removeEventListener('settings-updated', this.updateUI.bind(this));
@@ -385,6 +368,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1793015000
+V: 1793038000
 W: UPGRADE-007
 */
