@@ -4,25 +4,20 @@ import { updateDocument } from '../db/write.js';
 import { AppState } from '../config/state.js';
 import '../ui/order-view-editor.js';
 
-// 💡 預設導覽選單配置
+// 💡 更新：移除 data-entry，加入 isEnabled 屬性
 const defaultNavConfig = [
-  { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true },
-  { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false },
-  { id: 'data-entry', label: '資料錄入', icon: 'file-edit', showSidebar: true, showTop: false },
-  { id: 'table', label: '管理總表', icon: 'table', showSidebar: true, showTop: true },
-  { id: 'overview', label: '總狀態', icon: 'pie-chart', showSidebar: true, showTop: true },
-  { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true },
-  { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true },
-  { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false },
-  { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false },
-  { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false },
-  { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false }
+  { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true, isEnabled: true },
+  { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'table', label: '管理總表', icon: 'table', showSidebar: true, showTop: true, isEnabled: true },
+  { id: 'overview', label: '總狀態', icon: 'pie-chart', showSidebar: true, showTop: true, isEnabled: true },
+  { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
+  { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
+  { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings', label: '生產設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings-form', label: '表單設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'admin-data', label: '資料總管', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }
 ];
 
-/**
- * 系統啟動入口
- * 負責等待 DOM 載入完成後，初始化路由、背景任務與 PWA
- */
 document.addEventListener('DOMContentLoaded', () => {
   const root = document.getElementById('app-root');
   
@@ -31,26 +26,17 @@ document.addEventListener('DOMContentLoaded', () => {
     return;
   }
 
-  // 隱藏初始載入動畫
   const loadingEl = document.getElementById('app-loading');
   if (loadingEl) {
     loadingEl.classList.add('hidden');
   }
 
   try {
-    // 1. 啟動路由系統
     initRouter();
     console.log('[System] UPGRADE-WO 系統啟動成功。');
-
-    // 2. 全域監聽設定檔變更（確保工序、模板、導覽列等即時同步）
     listenSettingsUpdates();
-
-    // 3. 背景任務：自動修正歷史錯誤日期
     fixLegacyDatesInBackground();
-
-    // 4. 註冊 Service Worker (PWA)
     registerServiceWorker();
-    
   } catch (error) {
     console.error('[System Error] 系統啟動失敗:', error);
     root.innerHTML = `
@@ -64,23 +50,17 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 });
 
-/**
- * 全域監聽設定檔變更
- */
 function listenSettingsUpdates() {
   listenDocument('settings', 'main', async (data) => {
     if (!data) return;
     
     let needSave = false;
     
-    // 更新 AppState 中的全域狀態
     if (data.statuses) AppState.setStatuses(data.statuses);
     
-    // 💡 處理導覽選單配置
     if (data.nav_config && Array.isArray(data.nav_config)) {
       AppState.setNavConfig(data.nav_config);
     } else {
-      // 首次升級或無設定時，寫入預設配置
       AppState.setNavConfig(defaultNavConfig);
       data.nav_config = defaultNavConfig;
       needSave = true;
@@ -94,16 +74,11 @@ function listenSettingsUpdates() {
       }
     }
     
-    // 派發事件，通知所有前台頁面重新渲染
     window.dispatchEvent(new Event('settings-updated'));
-    // 💡 專門通知 layout 刷新導覽列
     window.dispatchEvent(new Event('nav-config-updated'));
   });
 }
 
-/**
- * 將 Excel 日期序列號轉換為 YYYY-MM-DD 格式
- */
 function formatDate(val) {
   if (!val) return "";
   if (typeof val === 'string' && (val.includes('-') || val.includes('/'))) {
@@ -119,13 +94,10 @@ function formatDate(val) {
   return String(val).trim();
 }
 
-/**
- * 背景自動修正歷史資料中的錯誤日期（例如 46300 轉為 YYYY-MM-DD）
- */
 async function fixLegacyDatesInBackground() {
   try {
     const userStr = sessionStorage.getItem('upgrade_user');
-    if (!userStr) return; // 未登入不執行
+    if (!userStr) return; 
     
     const orders = await getCollection('work_orders');
     let fixCount = 0;
@@ -134,7 +106,6 @@ async function fixLegacyDatesInBackground() {
       let needsUpdate = false;
       const updates = {};
 
-      // 檢查 uploadDate
       if (order.uploadDate && (typeof order.uploadDate === 'number' || (typeof order.uploadDate === 'string' && !order.uploadDate.includes('-')))) {
         const formatted = formatDate(order.uploadDate);
         if (formatted !== order.uploadDate && formatted !== '') {
@@ -143,7 +114,6 @@ async function fixLegacyDatesInBackground() {
         }
       }
 
-      // 檢查 dueDate
       if (order.dueDate && (typeof order.dueDate === 'number' || (typeof order.dueDate === 'string' && !order.dueDate.includes('-')))) {
         const formatted = formatDate(order.dueDate);
         if (formatted !== order.dueDate && formatted !== '') {
@@ -160,7 +130,6 @@ async function fixLegacyDatesInBackground() {
 
     if (fixCount > 0) {
       console.log(`[System] 背景自動修正了 ${fixCount} 筆工單的日期格式。`);
-      // 觸發事件讓當前頁面重新渲染
       window.dispatchEvent(new Event('data:dates-fixed'));
     }
 
@@ -169,9 +138,6 @@ async function fixLegacyDatesInBackground() {
   }
 }
 
-/**
- * 註冊 Service Worker 以啟用 PWA 功能
- */
 function registerServiceWorker() {
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
@@ -188,6 +154,6 @@ function registerServiceWorker() {
 
 /*
 F: AI-WA-UPWO/src/engine/main.js
-V: 1793021000
+V: 1793033000
 W: UPGRADE-007
 */
