@@ -6,7 +6,7 @@ import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
 import { parseExcelData } from '../domain/parser.js';
-import { checkDiff } from '../domain/data-diff.js'; // 💡 新增引入
+import { checkDiff } from '../domain/data-diff.js';
 import * as XLSX from 'xlsx';
 import { createIcons, Upload, RefreshCw } from 'lucide';
 
@@ -17,7 +17,7 @@ let schema = [];
 let viewConfig = {};
 let route_templates = [];
 let settingsCategories = [];
-let diffFields = []; // 💡 新增：記錄要核對的欄位
+let diffFields = [];
 
 // 自動同步相關變數
 let autoSyncInterval = null;
@@ -36,7 +36,7 @@ export default {
         viewConfig = settingsDoc.view_configs || {};
         route_templates = settingsDoc.route_templates || [];
         settingsCategories = settingsDoc.categories || [];
-        diffFields = settingsDoc.diff_fields || []; // 💡 載入核對設定
+        diffFields = settingsDoc.diff_fields || [];
       }
     } catch (err) {}
 
@@ -88,7 +88,7 @@ export default {
           viewConfig = settingsDoc.view_configs || {};
           route_templates = settingsDoc.route_templates || [];
           settingsCategories = settingsDoc.categories || [];
-          diffFields = settingsDoc.diff_fields || []; // 💡 更新核對設定
+          diffFields = settingsDoc.diff_fields || [];
           this.updateUI();
         }
       } catch (err) {}
@@ -298,12 +298,12 @@ export default {
             statuses = s.statuses || statuses; 
             schema = s.schema || schema; 
             routeTemplates = s.route_templates || [];
-            diffFields = s.diff_fields || []; // 💡 確保取到最新設定
+            diffFields = s.diff_fields || [];
           }
         } catch (err) {}
 
         const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
-        let added = 0, updated = 0, diffCount = 0; // 💡 新增 diffCount
+        let added = 0, updated = 0, diffCount = 0;
 
         for (const order of parsed) {
           const existing = await getDocument('work_orders', order.id);
@@ -317,11 +317,16 @@ export default {
                 diffCount++;
               }
             } else {
-              // Excel 工單：直接更新
-              await updateDocument('work_orders', order.id, { salesReps: order.salesReps, uploadDate: order.uploadDate, data: order.data });
+              // Excel 工單：防覆寫，只更新 Excel 來源欄位與動態欄位
+              // 💡 不更新 status, route, dueDate, uploadDate (保留手動修改的進度與日期)
+              await updateDocument('work_orders', order.id, { 
+                salesReps: order.salesReps, 
+                data: order.data 
+              });
               updated++;
             }
           } else {
+            // 新增工單：套用 Excel 的狀態與路線
             const orderCategory = order.data.category || '其他';
             let matchedTemplate = routeTemplates.find(t => {
               if (t.categories && t.categories.length > 0) return t.categories.includes(orderCategory);
@@ -333,16 +338,19 @@ export default {
               matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && !t.category);
             }
 
-            if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
-              order.route = matchedTemplate.steps.slice();
-              order.status = matchedTemplate.steps[0];
-            } else {
-              order.route = statuses.slice();
-              order.status = statuses[0];
+            // 若 Excel 沒有提供路線，才使用模板或預設
+            if (!order.route || order.route.length === 0) {
+              if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+                order.route = matchedTemplate.steps.slice();
+                order.status = matchedTemplate.steps[0];
+              } else {
+                order.route = statuses.slice();
+                order.status = statuses[0];
+              }
             }
-            
-            // 💡 確保來源標記
-            order.source = 'excel';
+
+            // 確保來源標記 (若 Excel 未指定)
+            if (!order.source) order.source = 'excel';
 
             await setDocument('work_orders', order.id, order);
             added++;
@@ -377,6 +385,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/kanban.js
-V: 1793000000
+V: 1793015000
 W: UPGRADE-007
 */
