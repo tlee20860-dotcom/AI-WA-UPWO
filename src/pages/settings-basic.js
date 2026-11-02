@@ -150,41 +150,52 @@ export function renderStatuses(container, currentSettings, saveSettings) {
 }
 
 /**
- * 渲染製程路線圖管理頁籤（💡 名詞替換：原製程模板）
+ * 渲染製程路線圖管理頁籤（支援多選類別）
  */
 export function renderRouteTemplates(container, currentSettings, saveSettings) {
-  // 取得類別清單作為下拉選單選項
-  const catOptions = (currentSettings.categories || []).map(c => `<option value="${c}">${c}</option>`).join('');
+  const categories = currentSettings.categories || [];
 
   container.innerHTML = `
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">製程路線圖管理</h2>
-        <p class="text-sm text-slate-500 mt-1">建立生產路線並綁定類別，匯入工單時會自動套用對應類別的路線圖。</p>
+        <p class="text-sm text-slate-500 mt-1">建立生產路線並綁定類別。若多個類別共用相同路線，可同時勾選。</p>
       </div>
     </div>
 
-    <div class="flex flex-col sm:flex-row gap-2 mb-6">
-      <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="路線圖名稱 (例如：GF生產路線圖)">
-      
-      <select id="new-template-category" class="w-full sm:w-48 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none">
-        <option value="">(通用預設)</option>
-        ${catOptions}
-      </select>
-
-      <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
-        <i data-lucide="plus" class="w-4 h-4"></i> 新增路線圖
-      </button>
+    <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6 flex flex-col gap-3">
+      <div class="flex flex-col sm:flex-row gap-2">
+        <input type="text" id="new-template-name" class="flex-1 px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none" placeholder="路線圖名稱 (例如：卷裝LABEL生產流程)">
+        <button id="btn-add-template" class="btn-primary px-4 py-2.5 text-sm flex items-center justify-center gap-2 whitespace-nowrap">
+          <i data-lucide="plus" class="w-4 h-4"></i> 新增路線圖
+        </button>
+      </div>
+      <div class="flex flex-col gap-1.5">
+        <label class="text-sm font-medium text-slate-700">對應類別 (可多選，全不選為通用預設)</label>
+        <div class="flex flex-wrap gap-2">
+          ${categories.length === 0 ? '<span class="text-xs text-slate-400">尚未建立任何類別</span>' : ''}
+          ${categories.map(c => `
+            <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+              <input type="checkbox" class="new-tmpl-cat-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${c}">
+              <span class="text-slate-700">${c}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
     </div>
 
     <div class="flex flex-col gap-3">
-      ${currentSettings.route_templates.map((tmpl, index) => `
+      ${currentSettings.route_templates.map((tmpl, index) => {
+        // 💡 向下相容：舊資料可能是 category 字串
+        const cats = Array.isArray(tmpl.categories) ? tmpl.categories : (tmpl.category ? [tmpl.category] : []);
+        
+        return `
         <div class="bg-white p-4 rounded-xl border border-slate-100 shadow-sm flex flex-col gap-3">
           <div class="flex items-center justify-between">
             <div class="flex items-center gap-2">
               <span class="font-bold text-slate-800 text-base">${tmpl.name}</span>
-              ${tmpl.category 
-                ? `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded">對應類別：${tmpl.category}</span>` 
+              ${cats.length > 0 
+                ? cats.map(c => `<span class="px-2 py-0.5 bg-blue-50 text-blue-600 text-[10px] font-bold rounded">${c}</span>`).join('')
                 : `<span class="px-2 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-bold rounded">通用預設</span>`
               }
             </div>
@@ -205,7 +216,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
             `).join('')}
           </div>
         </div>
-      `).join('')}
+      `}).join('')}
     </div>
   `;
 
@@ -214,16 +225,18 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
   // 新增模板
   document.getElementById('btn-add-template')?.addEventListener('click', async () => {
     const nameInput = document.getElementById('new-template-name');
-    const catSelect = document.getElementById('new-template-category');
     const name = nameInput.value.trim();
-    const category = catSelect.value.trim();
     
     if (!name) return;
     if (currentSettings.route_templates.some(t => t.name === name)) {
       showToast('名稱已存在', 'error');
       return;
     }
-    currentSettings.route_templates.push({ name, category, steps: [] });
+    
+    // 💡 收集勾選的多個類別
+    const selectedCats = Array.from(container.querySelectorAll('.new-tmpl-cat-cb:checked')).map(cb => cb.value);
+    
+    currentSettings.route_templates.push({ name, categories: selectedCats, steps: [] });
     await saveSettings();
     showToast('路線圖已新增，請編輯工序', 'success');
   });
@@ -249,20 +262,26 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.dataset.index);
       const tmpl = currentSettings.route_templates[idx];
+      const selectedCats = Array.isArray(tmpl.categories) ? tmpl.categories : (tmpl.category ? [tmpl.category] : []);
       
       const content = `
-        <div class="flex flex-col md:flex-row gap-4 mb-2">
-          <div class="flex-1 flex flex-col gap-1">
+        <div class="flex flex-col gap-4 mb-2">
+          <div class="flex flex-col gap-1">
             <label class="text-sm font-medium text-slate-700">路線圖名稱</label>
             <input type="text" id="edit-tmpl-name" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none" value="${tmpl.name}">
           </div>
-          <div class="flex-1 flex flex-col gap-1">
-            <label class="text-sm font-medium text-slate-700">對應類別 (留空為通用)</label>
-            
-            <select id="edit-tmpl-category" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none">
-              <option value="">(通用預設)</option>
-              ${(currentSettings.categories || []).map(c => `<option value="${c}" ${tmpl.category === c ? 'selected' : ''}>${c}</option>`).join('')}
-            </select>
+          
+          <div class="flex flex-col gap-1.5">
+            <label class="text-sm font-medium text-slate-700">對應類別 (可多選，全不選為通用)</label>
+            <div class="flex flex-wrap gap-2">
+              ${categories.length === 0 ? '<span class="text-xs text-slate-400">尚未建立任何類別</span>' : ''}
+              ${categories.map(c => `
+                <label class="flex items-center gap-1.5 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm cursor-pointer hover:border-brand">
+                  <input type="checkbox" class="edit-tmpl-cat-cb w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${c}" ${selectedCats.includes(c) ? 'checked' : ''}>
+                  <span class="text-slate-700">${c}</span>
+                </label>
+              `).join('')}
+            </div>
           </div>
         </div>
 
@@ -377,7 +396,7 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
 
       element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
         const newName = element.querySelector('#edit-tmpl-name').value.trim();
-        const newCategory = element.querySelector('#edit-tmpl-category').value.trim();
+        const newCategories = Array.from(element.querySelectorAll('.edit-tmpl-cat-cb:checked')).map(cb => cb.value);
         
         if (!newName) {
           showToast('名稱不能為空', 'error');
@@ -385,7 +404,11 @@ export function renderRouteTemplates(container, currentSettings, saveSettings) {
         }
 
         currentSettings.route_templates[idx].name = newName;
-        currentSettings.route_templates[idx].category = newCategory;
+        currentSettings.route_templates[idx].categories = newCategories;
+        // 清除舊的單選欄位以避免混淆
+        if (currentSettings.route_templates[idx].category) {
+          delete currentSettings.route_templates[idx].category;
+        }
         currentSettings.route_templates[idx].steps = currentSteps;
         
         await saveSettings();
@@ -574,6 +597,6 @@ export function renderMapping(container, currentSettings, saveSettings) {
 
 /*
 F: AI-WA-UPWO/src/pages/settings-basic.js
-V: 1793045000
+V: 1793046000
 W: UPGRADE-007
 */
