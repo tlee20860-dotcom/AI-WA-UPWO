@@ -72,7 +72,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     ];
   }
 
-  // 💡 名詞替換：若欄位 key 為 route_select 或 route，一律顯示為「製程路線圖」
+  // 名詞替換：若欄位 key 為 route_select 或 route，一律顯示為「製程路線圖」
   displayFields = displayFields.map(f => {
     if (f.key === 'route_select' || f.key === 'route') {
       return Object.assign({}, f, { label: '製程路線圖' });
@@ -224,6 +224,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
           const diffHtml = renderDiffIcon(order, f.key);
           
           if (f.key === 'id') {
+            // 💡 若為唯讀，單號不生成按鈕
+            if (isReadOnly) {
+              return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700 text-base">${val || '-'}</span></div>`;
+            }
             return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></div>`;
           }
           
@@ -265,7 +269,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          // 💡 顯示製程路線圖（取代原本的下拉選單）
+          // 顯示製程路線圖（取代原本的下拉選單）
           if (f.key === 'route_select') {
             const orderCat = getOrderCategory(order);
             const availableTemplates = (route_templates || []).filter(t => {
@@ -295,7 +299,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             return `<div class="text-sm flex flex-col gap-1"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${displayVal || '-'}</span>${diffHtml}</div>`;
           }
 
-          // 💡 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
+          // 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
           return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${val || '-'}</span>${diffHtml}</div>`;
         }).join('')}
         ${isAdmin ? `
@@ -330,6 +334,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                   const diffHtml = renderDiffIcon(order, f.key);
 
                   if (f.key === 'id') {
+                    // 💡 若為唯讀，單號不生成按鈕
+                    if (isReadOnly) {
+                      return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${val || '-'}</td>`;
+                    }
                     return `<td class="px-4 py-3 whitespace-nowrap"><button data-action="open-order-detail" data-id="${order.id}" class="font-bold text-brand hover:underline text-base">${val || '-'}</button></td>`;
                   }
                   
@@ -370,7 +378,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
 
-                  // 💡 顯示製程路線圖（取代原本的下拉選單）
+                  // 顯示製程路線圖（取代原本的下拉選單）
                   if (f.key === 'route_select') {
                     const orderCat = getOrderCategory(order);
                     const availableTemplates = (route_templates || []).filter(t => {
@@ -395,7 +403,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     return `<td class="px-4 py-3 whitespace-nowrap text-slate-600">${displayVal || '-'}${diffHtml}</td>`;
                   }
 
-                  // 💡 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
+                  // 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
                   return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}${diffHtml}</td>`;
                 }).join('')}
                 ${isAdmin ? `
@@ -476,6 +484,6 @@ function getOrderValue(order, key) {
 
 /*
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1793042000
+V: 1793092000
 W: UPGRADE-007
 */
