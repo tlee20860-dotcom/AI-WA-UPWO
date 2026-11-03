@@ -13,7 +13,7 @@ const defaultNavConfig = [
   { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
-  { id: 'settings-material', label: '物料管理', icon: 'package', showSidebar: true, showTop: false, isEnabled: true },
+  { id: 'settings-material', label: '資料庫中心', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }, // 💡 改名為資料庫中心
   { id: 'settings', label: '生產管理設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
   { id: 'settings-form', label: '工單管理設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
   { id: 'settings-system', label: '系統管理設定', icon: 'shield', showSidebar: true, showTop: false, isEnabled: true }
@@ -56,21 +56,27 @@ function listenSettingsUpdates() {
     if (!data) return;
     
     let needSave = false;
+    let updatePayload = {};
     
     if (data.statuses) AppState.setStatuses(data.statuses);
     
+    // 1. 導覽列遷移
     if (data.nav_config && Array.isArray(data.nav_config)) {
-      // 💡 自動遷移：如果用戶的舊配置中還有 data-entry 或 admin-data，自動轉換為新結構
       let configUpdated = false;
       const migratedConfig = data.nav_config.map(item => {
         if (item.id === 'admin-data') {
           configUpdated = true;
-          return null; // 移除舊的 admin-data
+          return null; 
+        }
+        // 如果舊配置中還是「物料管理」，自動改名為「資料庫中心」
+        if (item.id === 'settings-material' && item.label === '物料管理') {
+          item.label = '資料庫中心';
+          item.icon = 'database';
+          configUpdated = true;
         }
         return item;
       }).filter(Boolean);
 
-      // 檢查是否缺少新的設定頁面
       const newSettingsPages = ['settings-material', 'settings-system'];
       newSettingsPages.forEach(id => {
         if (!migratedConfig.some(c => c.id === id)) {
@@ -83,22 +89,73 @@ function listenSettingsUpdates() {
       });
 
       if (configUpdated) {
-        data.nav_config = migratedConfig;
+        updatePayload.nav_config = migratedConfig;
         needSave = true;
       }
-
       AppState.setNavConfig(data.nav_config);
     } else {
       AppState.setNavConfig(defaultNavConfig);
-      data.nav_config = defaultNavConfig;
+      updatePayload.nav_config = defaultNavConfig;
       needSave = true;
+    }
+
+    // 2. 💡 低程式碼資料庫無損遷移
+    if (!data.custom_databases) {
+      const migratedDbs = [];
+      
+      // 遷移供應商
+      if (Array.isArray(data.suppliers) && data.suppliers.length > 0) {
+        migratedDbs.push({
+          id: 'db_suppliers',
+          name: '外發供應商',
+          fields: data.supplier_schema || [],
+          items: data.suppliers
+        });
+      } else {
+        migratedDbs.push({ id: 'db_suppliers', name: '外發供應商', fields: [], items: [] });
+      }
+
+      // 遷移物料
+      if (Array.isArray(data.materials) && data.materials.length > 0) {
+        migratedDbs.push({
+          id: 'db_materials',
+          name: '物料資料',
+          fields: data.material_schema || [],
+          items: data.materials
+        });
+      } else {
+        migratedDbs.push({ id: 'db_materials', name: '物料資料', fields: [], items: [] });
+      }
+
+      // 遷移銷售員對照表 (轉為資料庫形式)
+      if (Array.isArray(data.sales_mapping) && data.sales_mapping.length > 0) {
+        // 將 { name, aliases } 轉為 items 結構
+        const salesItems = data.sales_mapping.map((sm, i) => ({
+          id: 'sm_' + i,
+          name: sm.name,
+          data: { aliases: (sm.aliases || []).join(', ') }
+        }));
+        migratedDbs.push({
+          id: 'db_sales',
+          name: '銷售員對照表',
+          fields: [{ key: 'aliases', label: '別名 (逗號隔開)', type: 'string' }],
+          items: salesItems
+        });
+      } else {
+        migratedDbs.push({ id: 'db_sales', name: '銷售員對照表', fields: [{ key: 'aliases', label: '別名 (逗號隔開)', type: 'string' }], items: [] });
+      }
+
+      updatePayload.custom_databases = migratedDbs;
+      needSave = true;
+      
+      // 注意：我們不刪除舊的 data.suppliers, data.materials，確保資料 100% 安全
     }
 
     if (needSave) {
       try {
-        await updateDocument('settings', 'main', { nav_config: data.nav_config });
+        await updateDocument('settings', 'main', updatePayload);
       } catch (err) {
-        console.warn('無法儲存預設導覽配置', err);
+        console.warn('無法儲存預設或遷移配置', err);
       }
     }
     
@@ -182,6 +239,6 @@ function registerServiceWorker() {
 
 /*
 F: AI-WA-UPWO/src/engine/main.js
-V: 1793060000
+V: 1793080000
 W: UPGRADE-007
 */
