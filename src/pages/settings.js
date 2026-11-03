@@ -10,7 +10,6 @@ import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-
 import { renderAreas } from './settings-area.js';
 import { renderCategories } from './settings-category.js';
 import { renderAreaStatuses } from './settings-area-status.js';
-import { renderSuppliers } from './settings-supplier.js'; // 💡 引入供應商模組
 
 let unsubscribe = null;
 export let currentSettings = { statuses: [], sales_mapping: [], users: [], route_templates: [], areas: [], categories: [], areaStatuses: [], suppliers: [], supplier_schema: [] };
@@ -26,7 +25,7 @@ export default {
 
     renderPageLayout({
       title: '生產管理設定',
-      subtitle: '管理工序、類別、製程路線圖、區域與外發供應商',
+      subtitle: '管理工序、類別、製程路線圖與區域',
       headerActions: '',
       stats: [],
       controls: '',
@@ -49,7 +48,7 @@ export default {
           areas: Array.isArray(data.areas) ? data.areas : [],
           categories: Array.isArray(data.categories) ? data.categories : [],
           areaStatuses: Array.isArray(data.areaStatuses) ? data.areaStatuses : ['正常', '壞機', '休息中'],
-          suppliers: Array.isArray(data.suppliers) ? data.suppliers : [], // 💡 初始化供應商
+          suppliers: Array.isArray(data.suppliers) ? data.suppliers : [],
           supplier_schema: Array.isArray(data.supplier_schema) ? data.supplier_schema : []
         });
 
@@ -58,9 +57,6 @@ export default {
         
         // 遷移：areaStatuses 不存在
         if (!Array.isArray(data.areaStatuses)) needSave = true;
-
-        // 遷移：suppliers 不存在
-        if (!Array.isArray(data.suppliers)) needSave = true;
 
         // 遷移：每個使用者補 allowedAreas, allowedSales 欄位，並升級舊角色
         if (Array.isArray(currentSettings.users)) {
@@ -210,9 +206,6 @@ export default {
           <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
             <i data-lucide="users" class="w-4 h-4"></i> 銷售員對照表
           </button>
-          <button class="tab-btn ${activeTab === 'suppliers' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="suppliers">
-            <i data-lucide="truck" class="w-4 h-4"></i> 外發供應商
-          </button>
         </div>
 
         <div class="flex-1 p-6 md:p-8" id="settings-content"></div>
@@ -253,13 +246,11 @@ export default {
       renderAreaStatuses(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'mapping') {
       renderMapping(content, currentSettings, this.saveSettings.bind(this));
-    } else if (activeTab === 'suppliers') {
-      renderSuppliers(content, currentSettings, this.saveSettings.bind(this));
     }
   },
 
   async saveSettings() {
-    // 確保只更新生產相關設定，絕對不洗掉表單或物料設定
+    // 確保只更新生產相關設定，絕對不洗掉表單或資料庫設定
     const dataToSave = {
       statuses: currentSettings.statuses,
       sales_mapping: currentSettings.sales_mapping,
@@ -284,6 +275,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793065000
+V: 1793083000
 W: UPGRADE-007
 */
