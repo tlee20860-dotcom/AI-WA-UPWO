@@ -6,7 +6,7 @@ import { showToast } from '../ui/toast.js';
 import { createIcons, Tag, Users, Shield, FileSpreadsheet, List, Database, LayoutDashboard, Layers, MapPin, Activity, GitBranch, Truck } from 'lucide';
 
 // 引入拆分出去的模組
-import { renderStatuses, renderMapping, renderRouteTemplates } from './settings-basic.js';
+import { renderStatuses, renderRouteTemplates } from './settings-basic.js';
 import { renderAreas } from './settings-area.js';
 import { renderCategories } from './settings-category.js';
 import { renderAreaStatuses } from './settings-area-status.js';
@@ -200,12 +200,6 @@ export default {
           <button class="tab-btn ${activeTab === 'area_statuses' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="area_statuses">
             <i data-lucide="activity" class="w-4 h-4"></i> 區域狀態
           </button>
-          
-          <div class="border-t border-slate-200/60 my-2"></div>
-          
-          <button class="tab-btn ${activeTab === 'mapping' ? 'bg-white text-brand shadow-sm border border-slate-200/50' : 'text-slate-600 hover:bg-slate-100 border border-transparent'} text-left px-4 py-3 rounded-xl font-medium text-sm transition-all flex items-center gap-3" data-tab="mapping">
-            <i data-lucide="users" class="w-4 h-4"></i> 銷售員對照表
-          </button>
         </div>
 
         <div class="flex-1 p-6 md:p-8" id="settings-content"></div>
@@ -213,7 +207,7 @@ export default {
     `;
 
     createIcons({
-      icons: { Tag, Users, Layers, MapPin, Activity, GitBranch, Truck },
+      icons: { Tag, Users, Layers, MapPin, Activity, GitBranch },
       attrs: { class: 'w-4 h-4' }
     });
 
@@ -244,22 +238,17 @@ export default {
       renderAreas(content, currentSettings, this.saveSettings.bind(this));
     } else if (activeTab === 'area_statuses') {
       renderAreaStatuses(content, currentSettings, this.saveSettings.bind(this));
-    } else if (activeTab === 'mapping') {
-      renderMapping(content, currentSettings, this.saveSettings.bind(this));
     }
   },
 
   async saveSettings() {
-    // 確保只更新生產相關設定，絕對不洗掉表單或資料庫設定
     const dataToSave = {
       statuses: currentSettings.statuses,
       sales_mapping: currentSettings.sales_mapping,
       route_templates: currentSettings.route_templates,
       areas: currentSettings.areas,
       categories: currentSettings.categories,
-      areaStatuses: currentSettings.areaStatuses,
-      suppliers: currentSettings.suppliers,
-      supplier_schema: currentSettings.supplier_schema
+      areaStatuses: currentSettings.areaStatuses
     };
     await updateDocument('settings', 'main', dataToSave);
     this.renderTabs();
@@ -275,6 +264,6 @@ export default {
 
 /*
 F: AI-WA-UPWO/src/pages/settings.js
-V: 1793083000
+V: 1793088000
 W: UPGRADE-007
 */
