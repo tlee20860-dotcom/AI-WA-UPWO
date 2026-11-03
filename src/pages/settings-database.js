@@ -4,31 +4,36 @@ import { createIcons, Plus, Trash2, Edit2, Settings2, Database, GripVertical, X,
 
 let activeDbId = '';
 
-/**
- * 渲染資料庫中心頁面
- * @param {HTMLElement} container 目標容器
- * @param {Object} currentSettings settings/main 的內容
- * @param {Function} saveSettings 儲存回呼（只更新特定欄位）
- */
 export function renderDatabaseCenter(container, currentSettings, saveSettings) {
-  // 確保資料結構存在
   if (!Array.isArray(currentSettings.custom_databases)) {
     currentSettings.custom_databases = [];
   }
 
   const databases = currentSettings.custom_databases;
 
-  // 如果有資料庫但還沒選中，預設選第一個
   if (databases.length > 0 && !activeDbId) {
     if (!databases.some(db => db.id === activeDbId)) {
       activeDbId = databases[0].id;
     }
   }
 
-  // 輔助函式：更新設定並重繪
+  // 定義 updateAndSave，包含雙向同步邏輯
   const updateAndSave = async (newDbs) => {
-    await saveSettings({ custom_databases: newDbs });
-    renderDatabaseCenter(container, { ...currentSettings, custom_databases: newDbs }, saveSettings);
+    let payload = { custom_databases: newDbs };
+    // 💡 同步回舊的 sales_mapping
+    const salesDb = newDbs.find(db => db.id === 'db_sales');
+    if (salesDb) {
+      payload.sales_mapping = salesDb.items.map(item => {
+        const aliasStr = item.data && item.data.aliases ? item.data.aliases : '';
+        return {
+          name: item.name,
+          aliases: aliasStr.split(',').map(s => s.trim()).filter(Boolean)
+        };
+      });
+    }
+
+    await saveSettings(payload);
+    renderDatabaseCenter(container, { ...currentSettings, ...payload }, saveSettings);
   };
 
   container.innerHTML = `
@@ -45,7 +50,6 @@ export function renderDatabaseCenter(container, currentSettings, saveSettings) {
     </div>
 
     <div class="bg-white rounded-[20px] border border-slate-200/60 shadow-soft overflow-hidden min-h-[500px] flex flex-col md:flex-row">
-      <!-- 左側：資料庫分頁清單 -->
       <div class="w-full md:w-56 border-r border-slate-100 bg-slate-50/50 p-3 flex flex-col gap-1 flex-shrink-0 overflow-y-auto">
         ${databases.length === 0 ? '<div class="text-sm text-slate-400 p-4 text-center">尚無資料庫</div>' : ''}
         ${databases.map(db => `
@@ -55,16 +59,12 @@ export function renderDatabaseCenter(container, currentSettings, saveSettings) {
         `).join('')}
       </div>
 
-      <!-- 右側：當前資料庫內容 -->
-      <div class="flex-1 p-6 md:p-8 flex flex-col" id="db-content">
-        <!-- 由 JS 渲染 -->
-      </div>
+      <div class="flex-1 p-6 md:p-8 flex flex-col" id="db-content"></div>
     </div>
   `;
 
   createIcons({ icons: { Plus, Database }, attrs: { class: 'w-4 h-4' } });
 
-  // 綁定 Tab 切換
   container.querySelectorAll('.db-tab-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
       activeDbId = e.currentTarget.dataset.id;
@@ -72,7 +72,6 @@ export function renderDatabaseCenter(container, currentSettings, saveSettings) {
     });
   });
 
-  // 綁定新增資料庫
   document.getElementById('btn-add-database')?.addEventListener('click', () => {
     const content = `
       <div class="flex flex-col gap-4">
@@ -115,10 +114,10 @@ export function renderDatabaseCenter(container, currentSettings, saveSettings) {
   });
 
   // 渲染右側內容
-  renderActiveDbContent();
+  renderActiveDbContent(updateAndSave);
 }
 
-function renderActiveDbContent() {
+function renderActiveDbContent(updateAndSave) {
   const container = document.getElementById('db-content');
   if (!container) return;
 
@@ -155,7 +154,6 @@ function renderActiveDbContent() {
       <div class="flex flex-col gap-2">
         ${db.items.length === 0 ? '<div class="text-slate-400 text-sm text-center py-8">尚無資料</div>' : ''}
         ${db.items.map((item, index) => {
-          // 根據欄位設定生成摘要
           const summary = (db.fields || []).map(f => {
             const val = item.data ? item.data[f.key] : '';
             if (!val) return '';
@@ -185,7 +183,6 @@ function renderActiveDbContent() {
 
   createIcons({ icons: { Settings2, Trash2, Plus, Edit2 }, attrs: { class: 'w-4 h-4' } });
 
-  // 刪除資料庫
   container.querySelector('#btn-del-database')?.addEventListener('click', async () => {
     const confirmed = await openConfirm({
       title: '刪除資料庫',
@@ -200,12 +197,10 @@ function renderActiveDbContent() {
     showToast('資料庫已刪除', 'success');
   });
 
-  // 設定欄位
   container.querySelector('#btn-manage-db-fields')?.addEventListener('click', () => {
-    renderDbFieldsModal(db);
+    renderDbFieldsModal(db, updateAndSave);
   });
 
-  // 新增資料
   container.querySelector('#btn-add-db-item')?.addEventListener('click', () => {
     const nameInput = container.querySelector('#new-db-item-name');
     const name = nameInput.value.trim();
@@ -219,7 +214,6 @@ function renderActiveDbContent() {
     updateAndSave(newDbs).then(() => showToast('資料已新增', 'success'));
   });
 
-  // 編輯資料
   container.querySelectorAll('.btn-edit-db-item').forEach(btn => {
     btn.addEventListener('click', (e) => {
       const idx = parseInt(e.currentTarget.dataset.index);
@@ -287,7 +281,6 @@ function renderActiveDbContent() {
     });
   });
 
-  // 刪除資料
   container.querySelectorAll('.btn-del-db-item').forEach(btn => {
     btn.addEventListener('click', async (e) => {
       const idx = parseInt(e.currentTarget.dataset.index);
@@ -306,7 +299,7 @@ function renderActiveDbContent() {
   });
 }
 
-function renderDbFieldsModal(db) {
+function renderDbFieldsModal(db, updateAndSave) {
   const content = `
     <div class="flex flex-col gap-4">
       <div class="flex gap-2">
@@ -355,11 +348,9 @@ function renderDbFieldsModal(db) {
     if (!targetDb.fields) targetDb.fields = [];
     targetDb.fields.push({ key: 'field_' + Date.now().toString(36), label, type });
     
-    await saveSettings({ custom_databases: newDbs });
+    await updateAndSave(newDbs);
     close();
     showToast('欄位已新增，請重新點擊「設定欄位」', 'success');
-    // 重新渲染主畫面
-    renderDatabaseCenter(document.getElementById('settings-material-container'), { ...currentSettings, custom_databases: newDbs }, saveSettings);
   });
 
   element.querySelectorAll('.btn-del-db-field').forEach(btn => {
@@ -370,17 +361,15 @@ function renderDbFieldsModal(db) {
       const targetDb = newDbs.find(d => d.id === db.id);
       targetDb.fields = targetDb.fields.filter(f => f.key !== key);
       
-      await saveSettings({ custom_databases: newDbs });
+      await updateAndSave(newDbs);
       close();
       showToast('欄位已刪除', 'success');
-      // 重新渲染主畫面
-      renderDatabaseCenter(document.getElementById('settings-material-container'), { ...currentSettings, custom_databases: newDbs }, saveSettings);
     });
   });
 }
 
 /*
 F: AI-WA-UPWO/src/pages/settings-database.js
-V: 1793081000
+V: 1793090000
 W: UPGRADE-007
 */
