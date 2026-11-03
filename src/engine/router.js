@@ -20,11 +20,11 @@ import SearchPage from '../pages/search.js';
 import SettingsPage from '../pages/settings.js';
 import SettingsFormPage from '../pages/settings-form.js';
 
-// 引入物料與系統管理的子渲染函數
-import { renderMaterials } from '../pages/settings-material.js';
+// 💡 引入全新的資料庫中心與系統管理
+import { renderDatabaseCenter } from '../pages/settings-database.js';
 import { renderSystemUsers, renderSystemData } from '../pages/settings-system.js';
 
-// 💡 將物料與系統管理包裝成標準 Page 模組
+// 💡 將資料庫中心包裝成標準 Page 模組
 const SettingsMaterialPage = {
   async render() {
     const user = AppState.getUser();
@@ -39,8 +39,8 @@ const SettingsMaterialPage = {
     } catch(e) {}
     
     renderPageLayout({
-      title: '物料管理設定',
-      subtitle: '管理物料主檔、自訂欄位與詳細資料',
+      title: '資料庫中心',
+      subtitle: '建立與管理系統中所有自訂資料庫（如：外發商、物料、客戶）',
       headerActions: '',
       stats: [],
       controls: '',
@@ -49,15 +49,14 @@ const SettingsMaterialPage = {
 
     const container = document.getElementById('settings-material-container');
     
-    // 傳入儲存函數，僅更新物料相關欄位，保護原有資料
+    // 傳入儲存函數，僅更新資料庫相關欄位，保護原有資料
     const saveSettings = async (dataToSave) => {
       await updateDocument('settings', 'main', dataToSave);
-      // 重新載入資料並刷新畫面
       const updated = await getDocument('settings', 'main');
-      renderMaterials(container, updated || {}, saveSettings);
+      renderDatabaseCenter(container, updated || {}, saveSettings);
     };
 
-    renderMaterials(container, currentSettings, saveSettings);
+    renderDatabaseCenter(container, currentSettings, saveSettings);
   }
 };
 
@@ -191,7 +190,6 @@ function handleRoute() {
       return;
     }
 
-    // 一般使用者不能進入設定相關頁面
     const isSettingsPage = ['settings', 'settings-form', 'settings-material', 'settings-system', 'admin-data'].includes(hash);
     if (role === 'viewer' && isSettingsPage) {
       showToast('您沒有權限訪問此頁面', 'error');
@@ -199,7 +197,6 @@ function handleRoute() {
       return;
     }
 
-    // 路由守衛：攔截已停用的頁面
     const navConfig = AppState.getNavConfig();
     if (navConfig) {
       const routeConfig = navConfig.find(r => r.id === hash);
@@ -271,6 +268,6 @@ export function initRouter() {
 
 /*
 F: AI-WA-UPWO/src/engine/router.js
-V: 1793058000
+V: 1793087000
 W: UPGRADE-007
 */
