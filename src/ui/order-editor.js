@@ -1,4 +1,4 @@
-import { createIcons, Save, RotateCcw, Plus, Trash2 } from 'lucide';
+import { createIcons, Save, RotateCcw } from 'lucide';
 import { showToast } from './toast.js';
 import { evaluate } from '../domain/formula-engine.js';
 
@@ -21,14 +21,12 @@ export function renderOrderEditor({
   formulas, 
   viewConfig, 
   routeTemplates = [],
-  materials = [], 
-  suppliers = [], 
+  customDatabases = [], // 💡 接收自訂資料庫
   layoutMode = 'B', 
   initialData = null, 
   isViewMode = false,
   onSave,
-  onCancel,
-  onQuickAddMaterial // 💡 新增：快速新增物料的回呼函式
+  onCancel
 }) {
   if (!container) return;
 
@@ -38,16 +36,6 @@ export function renderOrderEditor({
   } else {
     displayFields = schema.filter(f => f.isEditable);
   }
-
-  displayFields = displayFields.map(f => {
-    if (f.key === 'route') {
-      return Object.assign({}, f, { label: '製程路線圖' });
-    }
-    if (f.key === 'supplierName') {
-      return Object.assign({}, f, { label: '外發供應商' });
-    }
-    return f;
-  });
 
   const formData = {};
   displayFields.forEach(f => {
@@ -64,8 +52,6 @@ export function renderOrderEditor({
     }
   });
 
-  let currentMaterials = Array.isArray(initialData?.materials) ? JSON.parse(JSON.stringify(initialData.materials)) : [];
-  
   const getOrderCategory = () => {
     return (initialData && initialData.data && initialData.data.category) 
       ? String(initialData.data.category).toUpperCase() 
@@ -93,25 +79,10 @@ export function renderOrderEditor({
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           ${displayFields.map(f => {
             const value = formData[f.key] !== undefined ? formData[f.key] : '';
-            
-            if (f.key === 'supplierName') {
-              const isKnown = suppliers.some(s => s.name === value);
-              const customOption = (value && !isKnown) ? `<option value="${value}" selected>${value} (自訂)</option>` : '';
-              const disabledAttr = isViewMode ? 'disabled' : '';
-              const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
+            const disabledAttr = isViewMode ? 'disabled' : '';
+            const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
 
-              return `
-                <div class="flex flex-col gap-1.5">
-                  <label class="text-sm font-medium text-slate-700">${f.label}</label>
-                  <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
-                    <option value="">(無 / 自行生產)</option>
-                    ${customOption}
-                    ${suppliers.map(s => `<option value="${s.name}" ${s.name === value ? 'selected' : ''}>${s.name}</option>`).join('')}
-                  </select>
-                </div>
-              `;
-            }
-
+            // 1. 處理製程路線圖 (route)
             if (f.key === 'route') {
               const orderCategory = getOrderCategory();
               const availableTemplates = routeTemplates.filter(t => {
@@ -128,9 +99,6 @@ export function renderOrderEditor({
                 if (matched) currentMatchName = matched.name;
               }
 
-              const disabledAttr = isViewMode ? 'disabled' : '';
-              const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
-
               return `
                 <div class="flex flex-col gap-1.5">
                   <label class="text-sm font-medium text-slate-700">${f.label}</label>
@@ -142,10 +110,30 @@ export function renderOrderEditor({
               `;
             }
 
-            const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
-            const disabledAttr = isViewMode ? 'disabled' : '';
-            const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
+            // 2. 💡 處理關聯資料庫 (relation)
+            if (f.type === 'relation') {
+              const targetDb = customDatabases.find(db => db.id === f.db_id);
+              const items = targetDb ? targetDb.items : [];
+              
+              // 處理舊資料可能是存 name 而不是 id 的情況
+              const isIdMatch = items.some(item => item.id === value);
+              const selectedItem = items.find(item => item.id === value || item.name === value);
+              const selectedValue = selectedItem ? selectedItem.id : value;
 
+              return `
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-medium text-slate-700">${f.label} <span class="text-xs text-brand">🔗</span></label>
+                  <select data-key="${f.key}" class="${baseClass}" ${disabledAttr}>
+                    <option value="">(請選擇)</option>
+                    ${!targetDb ? '<option value="">找不到關聯資料庫</option>' : ''}
+                    ${items.map(item => `<option value="${item.id}" ${item.id === selectedValue ? 'selected' : ''}>${item.name}</option>`).join('')}
+                  </select>
+                </div>
+              `;
+            }
+
+            // 3. 一般欄位渲染
+            const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             return `
               <div class="flex flex-col gap-1.5">
                 <label class="text-sm font-medium text-slate-700">${f.label}</label>
@@ -154,171 +142,12 @@ export function renderOrderEditor({
             `;
           }).join('')}
         </div>
-
-        <!-- 💡 工單物料明細區塊 -->
-        <div class="mt-8 border-t border-slate-200 pt-6">
-          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-            <h3 class="text-base font-bold text-slate-800">工單物料明細</h3>
-            
-            ${!isViewMode ? `
-            <div class="flex items-center gap-2">
-              <input type="text" id="quick-add-mat-input" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand w-48" placeholder="快速新增物料名稱...">
-              <button id="btn-quick-add-mat" class="bg-white text-brand border border-brand/30 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-brand/5 flex items-center gap-1 transition-colors">
-                <i data-lucide="plus" class="w-4 h-4"></i> 新增
-              </button>
-              <button id="btn-add-material" class="text-sm text-brand hover:text-brand-hover font-medium flex items-center gap-1 ml-2">
-                新增明細列
-              </button>
-            </div>
-            ` : ''}
-          </div>
-          
-          <div class="overflow-x-auto w-full">
-            <table class="w-full text-left border-collapse min-w-[500px]" id="material-table">
-              <thead>
-                <tr class="border-b border-slate-200 text-sm text-slate-500">
-                  <th class="pb-2 font-medium">物料名稱</th>
-                  <th class="pb-2 font-medium w-24">數量</th>
-                  <th class="pb-2 font-medium">備註</th>
-                  ${!isViewMode ? `<th class="pb-2 w-12"></th>` : ''}
-                </tr>
-              </thead>
-              <tbody id="material-tbody"></tbody>
-            </table>
-            <div id="material-empty" class="text-center text-slate-400 text-sm py-4 hidden">尚未新增任何物料</div>
-          </div>
-        </div>
       </div>
     </div>
   `;
 
   container.innerHTML = html;
-  createIcons({ icons: { Save, RotateCcw, Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
-
-  const tbody = container.querySelector('#material-tbody');
-  const emptyMsg = container.querySelector('#material-empty');
-
-  const renderMaterialsTable = () => {
-    if (currentMaterials.length === 0) {
-      tbody.innerHTML = '';
-      emptyMsg.classList.remove('hidden');
-      return;
-    }
-    emptyMsg.classList.add('hidden');
-
-    const orderCategory = getOrderCategory();
-
-    tbody.innerHTML = currentMaterials.map((mat, idx) => {
-      const availableMaterials = materials.filter(m => {
-        if (!m.categories || m.categories.length === 0) return true;
-        return m.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
-      });
-
-      const isKnown = availableMaterials.some(m => m.id === mat.materialId);
-      const customMatOption = (!isKnown && mat.materialId) ? `<option value="${mat.materialId}" selected>${mat.name || '未知物料'} (自訂)</option>` : '';
-
-      return `
-        <tr class="border-b border-slate-100 last:border-0" data-index="${idx}">
-          <td class="py-2 pr-2">
-            <select class="mat-name-select w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" ${isViewMode ? 'disabled' : ''}>
-              <option value="">請選擇物料</option>
-              ${customMatOption}
-              ${availableMaterials.map(m => `<option value="${m.id}" ${mat.materialId === m.id ? 'selected' : ''}>${m.name}</option>`).join('')}
-            </select>
-          </td>
-          <td class="py-2 pr-2">
-            <input type="number" class="mat-qty-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${mat.qty || ''}" placeholder="0" ${isViewMode ? 'disabled' : ''}>
-          </td>
-          <td class="py-2 pr-2">
-            <input type="text" class="mat-note-input w-full px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${mat.note || ''}" placeholder="選填" ${isViewMode ? 'disabled' : ''}>
-          </td>
-          ${!isViewMode ? `
-          <td class="py-2 text-center">
-            <button class="btn-del-mat text-slate-400 hover:text-rose-500 p-1" data-index="${idx}">
-              <i data-lucide="trash-2" class="w-4 h-4"></i>
-            </button>
-          </td>
-          ` : ''}
-        </tr>
-      `;
-    }).join('');
-
-    createIcons({ icons: { Trash2 }, attrs: { class: 'w-4 h-4' } });
-
-    tbody.querySelectorAll('.mat-name-select').forEach(select => {
-      select.addEventListener('change', (e) => {
-        const idx = parseInt(e.target.closest('tr').dataset.index);
-        currentMaterials[idx].materialId = e.target.value;
-      });
-    });
-
-    tbody.querySelectorAll('.mat-qty-input').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const idx = parseInt(e.target.closest('tr').dataset.index);
-        currentMaterials[idx].qty = e.target.value;
-      });
-    });
-
-    tbody.querySelectorAll('.mat-note-input').forEach(input => {
-      input.addEventListener('input', (e) => {
-        const idx = parseInt(e.target.closest('tr').dataset.index);
-        currentMaterials[idx].note = e.target.value;
-      });
-    });
-
-    tbody.querySelectorAll('.btn-del-mat').forEach(btn => {
-      btn.addEventListener('click', (e) => {
-        const idx = parseInt(e.currentTarget.dataset.index);
-        currentMaterials.splice(idx, 1);
-        renderMaterialsTable();
-      });
-    });
-  };
-
-  renderMaterialsTable();
-
-  // 💡 快速新增物料事件
-  container.querySelector('#btn-quick-add-mat')?.addEventListener('click', async () => {
-    const input = container.querySelector('#quick-add-mat-input');
-    const name = input.value.trim();
-    if (!name) return;
-    
-    if (materials.some(m => m.name === name)) {
-      showToast('該物料已存在，請直接從下拉選單選擇', 'error');
-      return;
-    }
-
-    if (onQuickAddMaterial) {
-      const btn = container.querySelector('#btn-quick-add-mat');
-      btn.innerHTML = '新增中...';
-      btn.disabled = true;
-      
-      try {
-        // 呼叫外部寫入資料庫，並回傳新物件
-        const newMat = await onQuickAddMaterial(name);
-        if (newMat) {
-          materials.push(newMat); // 更新本地陣列
-          // 自動加入明細列
-          currentMaterials.push({ materialId: newMat.id, qty: '', note: '' });
-          renderMaterialsTable();
-          input.value = '';
-          showToast(`已新增物料：${name}`, 'success');
-        }
-      } catch (err) {
-        showToast('新增物料失敗', 'error');
-      } finally {
-        btn.innerHTML = `<i data-lucide="plus" class="w-4 h-4"></i> 新增`;
-        btn.disabled = false;
-        createIcons({ icons: { Plus }, attrs: { class: 'w-4 h-4' } });
-      }
-    }
-  });
-
-  // 新增空白明細列
-  container.querySelector('#btn-add-material')?.addEventListener('click', () => {
-    currentMaterials.push({ materialId: '', qty: '', note: '' });
-    renderMaterialsTable();
-  });
+  createIcons({ icons: { Save, RotateCcw }, attrs: { class: 'w-4 h-4' } });
 
   const bodyEl = container.querySelector('#editor-body');
   const inputs = bodyEl.querySelectorAll('input[data-key], select[data-key]');
@@ -391,25 +220,19 @@ export function renderOrderEditor({
 
       displayFields.forEach(f => {
         if (f.key === 'route' || f.key === 'status') return;
-        const val = formData[f.key];
-        if (f.key === 'supplierName') {
-           finalData.supplierName = val;
-        } else if (f.isSystem) {
+        
+        let val = formData[f.key];
+        
+        // 如果是關聯欄位，我們儲存 ID。但為了讓匯出顯示名稱，我們可以額外存一個 map 或是保留原本的字串？
+        // 為了架構單純，這裡依然存 ID。若要顯示名稱，由 UI 讀取 customDatabases 轉換。
+        // 但為了向下相容舊的 supplierName (存 name)，這裡不強制轉換，直接存 val。
+        
+        if (f.isSystem) {
           finalData[f.key] = val;
         } else {
           finalData.data[f.key] = val;
         }
       });
-
-      finalData.materials = currentMaterials.map(m => {
-        const matchedMat = materials.find(x => x.id === m.materialId);
-        return {
-          materialId: m.materialId,
-          name: matchedMat ? matchedMat.name : '未知物料',
-          qty: m.qty,
-          note: m.note
-        };
-      }).filter(m => m.materialId !== '');
 
       await onSave(finalData);
     }
@@ -418,6 +241,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793078000
+V: 1793084000
 W: UPGRADE-007
 */
