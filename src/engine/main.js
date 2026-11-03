@@ -4,7 +4,6 @@ import { updateDocument } from '../db/write.js';
 import { AppState } from '../config/state.js';
 import '../ui/order-view-editor.js';
 
-// 💡 更新：全新的四大設定中心預設配置
 const defaultNavConfig = [
   { id: 'kanban', label: '工單進度表', icon: 'layout-dashboard', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'search', label: '全域搜尋', icon: 'search', showSidebar: true, showTop: false, isEnabled: true },
@@ -13,7 +12,7 @@ const defaultNavConfig = [
   { id: 'category', label: '類別視圖', icon: 'layers', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'salesperson', label: '銷售員', icon: 'users', showSidebar: true, showTop: true, isEnabled: true },
   { id: 'area', label: '生產區域', icon: 'map-pin', showSidebar: true, showTop: false, isEnabled: true },
-  { id: 'settings-material', label: '資料庫中心', icon: 'database', showSidebar: true, showTop: false, isEnabled: true }, // 💡 改名為資料庫中心
+  { id: 'settings-material', label: '資料庫中心', icon: 'database', showSidebar: true, showTop: false, isEnabled: true },
   { id: 'settings', label: '生產管理設定', icon: 'settings', showSidebar: true, showTop: false, isEnabled: true },
   { id: 'settings-form', label: '工單管理設定', icon: 'sliders', showSidebar: true, showTop: false, isEnabled: true },
   { id: 'settings-system', label: '系統管理設定', icon: 'shield', showSidebar: true, showTop: false, isEnabled: true }
@@ -68,7 +67,6 @@ function listenSettingsUpdates() {
           configUpdated = true;
           return null; 
         }
-        // 如果舊配置中還是「物料管理」，自動改名為「資料庫中心」
         if (item.id === 'settings-material' && item.label === '物料管理') {
           item.label = '資料庫中心';
           item.icon = 'database';
@@ -100,55 +98,50 @@ function listenSettingsUpdates() {
     }
 
     // 2. 💡 低程式碼資料庫無損遷移
-    if (!data.custom_databases) {
-      const migratedDbs = [];
-      
-      // 遷移供應商
-      if (Array.isArray(data.suppliers) && data.suppliers.length > 0) {
-        migratedDbs.push({
-          id: 'db_suppliers',
-          name: '外發供應商',
-          fields: data.supplier_schema || [],
-          items: data.suppliers
-        });
-      } else {
-        migratedDbs.push({ id: 'db_suppliers', name: '外發供應商', fields: [], items: [] });
-      }
+    let currentDbs = Array.isArray(data.custom_databases) ? [...data.custom_databases] : [];
+    let dbsChanged = false;
 
-      // 遷移物料
-      if (Array.isArray(data.materials) && data.materials.length > 0) {
-        migratedDbs.push({
-          id: 'db_materials',
-          name: '物料資料',
-          fields: data.material_schema || [],
-          items: data.materials
-        });
-      } else {
-        migratedDbs.push({ id: 'db_materials', name: '物料資料', fields: [], items: [] });
-      }
+    // 確保供應商存在
+    if (!currentDbs.some(db => db.id === 'db_suppliers')) {
+      currentDbs.push({
+        id: 'db_suppliers',
+        name: '外發供應商',
+        fields: data.supplier_schema || [],
+        items: data.suppliers || []
+      });
+      dbsChanged = true;
+    }
 
-      // 遷移銷售員對照表 (轉為資料庫形式)
-      if (Array.isArray(data.sales_mapping) && data.sales_mapping.length > 0) {
-        // 將 { name, aliases } 轉為 items 結構
-        const salesItems = data.sales_mapping.map((sm, i) => ({
-          id: 'sm_' + i,
-          name: sm.name,
-          data: { aliases: (sm.aliases || []).join(', ') }
-        }));
-        migratedDbs.push({
-          id: 'db_sales',
-          name: '銷售員對照表',
-          fields: [{ key: 'aliases', label: '別名 (逗號隔開)', type: 'string' }],
-          items: salesItems
-        });
-      } else {
-        migratedDbs.push({ id: 'db_sales', name: '銷售員對照表', fields: [{ key: 'aliases', label: '別名 (逗號隔開)', type: 'string' }], items: [] });
-      }
+    // 確保物料存在
+    if (!currentDbs.some(db => db.id === 'db_materials')) {
+      currentDbs.push({
+        id: 'db_materials',
+        name: '物料資料',
+        fields: data.material_schema || [],
+        items: data.materials || []
+      });
+      dbsChanged = true;
+    }
 
-      updatePayload.custom_databases = migratedDbs;
+    // 確保銷售員存在
+    if (!currentDbs.some(db => db.id === 'db_sales')) {
+      const salesItems = (data.sales_mapping || []).map((sm, i) => ({
+        id: 'sm_' + i,
+        name: sm.name,
+        data: { aliases: (sm.aliases || []).join(', ') }
+      }));
+      currentDbs.push({
+        id: 'db_sales',
+        name: '銷售員對照表',
+        fields: [{ key: 'aliases', label: '別名 (逗號隔開)', type: 'string' }],
+        items: salesItems
+      });
+      dbsChanged = true;
+    }
+
+    if (dbsChanged) {
+      updatePayload.custom_databases = currentDbs;
       needSave = true;
-      
-      // 注意：我們不刪除舊的 data.suppliers, data.materials，確保資料 100% 安全
     }
 
     if (needSave) {
@@ -239,6 +232,6 @@ function registerServiceWorker() {
 
 /*
 F: AI-WA-UPWO/src/engine/main.js
-V: 1793080000
+V: 1793089000
 W: UPGRADE-007
 */
