@@ -30,13 +30,46 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
   const title = orderId ? '編輯工單' : '新增工單';
 
-  // 使用三層架構的 Modal，內容區留空由 renderOrderEditor 填充
   const content = `<div id="modal-editor-container" class="w-full"></div>`;
   
-  // footer 留空，因為 order-editor 自帶儲存與取消按鈕
   const { close, element } = openModal({ title, content, footer: '', size: 'max-w-5xl' });
 
   const container = element.querySelector('#modal-editor-container');
+
+  // 💡 處理快速新增物料的邏輯 (由 UI 層呼叫，但在這裡寫入資料庫以保持架構乾淨)
+  const handleQuickAddMaterial = async (name) => {
+    try {
+      const latestSettings = await getDocument('settings', 'main');
+      if (!latestSettings) throw new Error('無法讀取設定檔');
+      
+      const newMatId = 'mat_' + Date.now().toString(36);
+      const newMaterial = {
+        id: newMatId,
+        name: name,
+        categories: [], // 預設不綁定類別，或者可以自動綁定 currentCategory，這裡留空為通用
+        data: {}
+      };
+
+      const updatedMaterials = Array.isArray(latestSettings.materials) ? [...latestSettings.materials] : [];
+      updatedMaterials.push(newMaterial);
+
+      // 只更新 materials 欄位，避免覆蓋其他設定
+      await updateDocument('settings', 'main', { materials: updatedMaterials });
+      
+      // 同步更新 currentSettings，讓背景的畫面能更新
+      if (currentSettings) {
+        currentSettings.materials = updatedMaterials;
+      }
+      
+      // 觸發全域更新事件
+      window.dispatchEvent(new Event('settings-updated'));
+      
+      return newMaterial;
+    } catch (err) {
+      console.error('Quick add material error:', err);
+      throw err;
+    }
+  };
 
   renderOrderEditor({
     container: container,
@@ -45,10 +78,11 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
     viewConfig: currentSettings.view_configs?.['data-entry'] || currentSettings.view_configs?.['table'] || [],
     routeTemplates: currentSettings.route_templates || [],
     materials: currentSettings.materials || [],
-    suppliers: currentSettings.suppliers || [], // 💡 傳入外發供應商主檔
-    layoutMode: 'A', // 彈窗內預設用平鋪模式最順暢
+    suppliers: currentSettings.suppliers || [],
+    layoutMode: 'A',
     initialData: initialData,
-    isViewMode: false, // 直接進入編輯模式
+    isViewMode: false,
+    onQuickAddMaterial: handleQuickAddMaterial, // 💡 傳入
     onSave: async (formData) => {
       const targetId = formData.id || orderId;
       
@@ -59,7 +93,6 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
       try {
         if (!orderId) {
-          // 新增
           const existing = await getDocument('work_orders', targetId);
           if (existing) {
             showToast(`工單 ${targetId} 已存在`, 'error');
@@ -71,19 +104,15 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
             formData.route = currentSettings.statuses ? [...currentSettings.statuses] : [];
             formData.status = currentSettings.statuses?.[0] || '排產中';
           }
-          // 手動新增時，開單日期強制抓今天
           formData.uploadDate = new Date().toISOString().split('T')[0];
           formData.statusUpdateDate = formData.uploadDate;
 
           await setDocument('work_orders', targetId, formData);
           showToast('工單新增成功', 'success');
         } else {
-          // 更新
-          // 注意：formData 包含了從 order-editor 傳來的所有欄位，其中也包含 materials 與 supplierName
-          // 為了避免覆蓋 Excel 匯入的 uploadDate，如果工單來源是 excel，則不更新 uploadDate
           const existing = await getDocument('work_orders', targetId);
           if (existing && existing.source === 'excel') {
-            delete formData.uploadDate; // 保留 Excel 的開單日期
+            delete formData.uploadDate;
           }
           
           await updateDocument('work_orders', targetId, formData);
@@ -105,6 +134,6 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
 /*
 F: AI-WA-UPWO/src/ui/order-detail-modal.js
-V: 1793068000
+V: 1793079000
 W: UPGRADE-007
 */
