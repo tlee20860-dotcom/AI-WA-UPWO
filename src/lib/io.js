@@ -26,14 +26,6 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
     return '';
   };
 
-  // 輔助函數：將 materials 陣列轉為字串
-  const formatMaterials = (mats) => {
-    if (Array.isArray(mats) && mats.length > 0) {
-      return mats.map(m => `${m.name || '未知物料'} * ${m.qty || 0}`).join(', ');
-    }
-    return '';
-  };
-
   // 輔助函數：取得所有資料庫中出現的動態欄位 Key (用於「全部工單」)
   const getAllDataKeys = () => {
     const keys = new Set();
@@ -52,17 +44,15 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
       '工單號碼': order.id,
       '狀態': order.status,
       '製程路線': formatRoute(order.route),
-      '外發供應商': order.supplierName || '', // 💡 新增外發供應商
       '銷售員': (order.salesReps || []).join(', '),
       '開單日期': order.uploadDate || '',
       '交貨日期': order.dueDate || '',
       '狀態更新日': order.statusUpdateDate || '',
-      '工單物料': formatMaterials(order.materials),
       '來源': order.source === 'manual' ? '手動' : 'Excel',
       '核對狀態': order.diff ? '有差異' : '正常'
     };
 
-    // 加入 Schema 定義的欄位
+    // 加入 Schema 定義的欄位 (包含關聯欄位)
     schema.forEach(field => {
       if (!field.isSystem) {
         row[field.label] = order.data && order.data[field.key] !== undefined ? order.data[field.key] : '';
@@ -72,10 +62,15 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
     // 加入 Schema 未定義但在資料中存在的欄位
     allDataKeys.forEach(key => {
       const schemaField = schema.find(f => f.key === key);
-      if (!schemaField) {
+      if (!schemaField && key !== 'category') {
         row[key] = order.data && order.data[key] !== undefined ? order.data[key] : '';
       }
     });
+
+    // 向下相容舊資料的 supplierName (若有在根目錄)
+    if (order.supplierName && !row['外發供應商']) {
+      row['外發供應商'] = order.supplierName;
+    }
 
     return row;
   });
@@ -93,21 +88,12 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
     targetFields = [
       { key: 'id', label: '工單號碼' },
       { key: 'status', label: '狀態' },
-      { key: 'supplierName', label: '外發供應商' }, // 💡 預設加入
       { key: 'salesReps', label: '銷售員' },
       { key: 'uploadDate', label: '開單日期' },
-      { key: 'dueDate', label: '交貨日期' },
-      { key: 'materials', label: '工單物料' }
+      { key: 'dueDate', label: '交貨日期' }
     ];
+    // 加入所有自訂欄位
     schema.filter(f => !f.isSystem).forEach(f => targetFields.push(f));
-  }
-
-  // 確保自訂匯出欄位中，如果有物料或外發欄位，也能正確處理
-  if (!targetFields.some(f => f.key === 'materials')) {
-    targetFields.push({ key: 'materials', label: '工單物料' });
-  }
-  if (!targetFields.some(f => f.key === 'supplierName')) {
-    targetFields.push({ key: 'supplierName', label: '外發供應商' });
   }
 
   for (const status of statuses) {
@@ -122,8 +108,6 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
           row['工單號碼'] = order.id;
         } else if (f.key === 'status') {
           row['狀態'] = order.status;
-        } else if (f.key === 'supplierName') {
-          row['外發供應商'] = order.supplierName || ''; // 💡 處理外發供應商
         } else if (f.key === 'salesReps') {
           row['銷售員'] = (order.salesReps || []).join(', ');
         } else if (f.key === 'uploadDate') {
@@ -132,8 +116,6 @@ export function exportToExcel(orders, statuses, filename = '工單清單', schem
           row['交貨日期'] = order.dueDate || '';
         } else if (f.key === 'route') {
           row['製程路線'] = formatRoute(order.route);
-        } else if (f.key === 'materials') {
-          row['工單物料'] = formatMaterials(order.materials); 
         } else if (f.isSystem) {
           row[f.label] = order[f.key] || '';
         } else {
@@ -225,19 +207,15 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
       doc.text(salesRep, 70, yPos);
       doc.text(dueDate, 120, yPos);
 
-      // 組合額外資訊（包含物料與外發）
+      // 組合額外資訊（包含自訂欄位）
       let extraInfoArr = [];
-      if (order.supplierName) {
-        extraInfoArr.push(`外發: ${order.supplierName}`);
-      }
-      if (Array.isArray(order.materials) && order.materials.length > 0) {
-        const matStr = order.materials.map(m => `${m.name}*${m.qty}`).join(', ');
-        extraInfoArr.push(`物料: ${matStr}`);
-      }
       const customFields = schema.filter(f => !f.isSystem);
+      
       customFields.forEach(f => {
         const val = order.data && order.data[f.key] !== undefined ? order.data[f.key] : '-';
-        extraInfoArr.push(`${f.label}: ${val}`);
+        if (val) {
+          extraInfoArr.push(`${f.label}: ${val}`);
+        }
       });
 
       if (extraInfoArr.length > 0) {
@@ -262,6 +240,6 @@ export function exportToPDF(orders, statuses, filename = '工單清單', schema 
 
 /*
 F: AI-WA-UPWO/src/lib/io.js
-V: 1793069000
+V: 1793086000
 W: UPGRADE-007
 */
