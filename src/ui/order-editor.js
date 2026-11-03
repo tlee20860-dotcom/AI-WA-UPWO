@@ -15,10 +15,6 @@ function normalizeRoute(route) {
   return [];
 }
 
-/**
- * 渲染工單錄入/編輯表單
- * @param {Object} options
- */
 export function renderOrderEditor({ 
   container, 
   schema, 
@@ -26,16 +22,16 @@ export function renderOrderEditor({
   viewConfig, 
   routeTemplates = [],
   materials = [], 
-  suppliers = [], // 💡 接收供應商主檔
+  suppliers = [], 
   layoutMode = 'B', 
   initialData = null, 
   isViewMode = false,
   onSave,
-  onCancel
+  onCancel,
+  onQuickAddMaterial // 💡 新增：快速新增物料的回呼函式
 }) {
   if (!container) return;
 
-  // 1. 決定要顯示的欄位
   let displayFields = [];
   if (viewConfig && viewConfig.length > 0) {
     displayFields = viewConfig.map(key => schema.find(f => f.key === key)).filter(Boolean);
@@ -43,7 +39,6 @@ export function renderOrderEditor({
     displayFields = schema.filter(f => f.isEditable);
   }
 
-  // 名詞替換：若欄位為 route，強制覆寫 Label
   displayFields = displayFields.map(f => {
     if (f.key === 'route') {
       return Object.assign({}, f, { label: '製程路線圖' });
@@ -54,7 +49,6 @@ export function renderOrderEditor({
     return f;
   });
 
-  // 2. 準備表單初始資料
   const formData = {};
   displayFields.forEach(f => {
     if (initialData) {
@@ -70,20 +64,16 @@ export function renderOrderEditor({
     }
   });
 
-  // 準備工單物料資料
   let currentMaterials = Array.isArray(initialData?.materials) ? JSON.parse(JSON.stringify(initialData.materials)) : [];
   
-  // 取得當前工單類別，用於過濾物料
   const getOrderCategory = () => {
     return (initialData && initialData.data && initialData.data.category) 
       ? String(initialData.data.category).toUpperCase() 
       : (formData['id'] ? String(formData['id']).match(/^[a-zA-Z]+/)?.[0]?.toUpperCase() : '其他') || '其他';
   };
 
-  // 3. 繪製 HTML
   let html = `
     <div class="bg-transparent flex flex-col">
-      <!-- Header (固定) -->
       <div class="px-2 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between flex-shrink-0 gap-3">
         <div class="flex items-center gap-3">
           <h2 class="text-lg font-bold text-slate-800">${initialData ? '編輯工單資料' : '新增工單資料'}</h2>
@@ -99,18 +89,14 @@ export function renderOrderEditor({
         </div>
       </div>
 
-      <!-- Body (不設滾動，由 Modal 提供) -->
       <div class="py-4 relative" id="editor-body">
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
           ${displayFields.map(f => {
             const value = formData[f.key] !== undefined ? formData[f.key] : '';
             
-            // 💡 特殊處理：外發供應商 (supplierName) 渲染為下拉選單
             if (f.key === 'supplierName') {
-              // 檢查目前的值是否在供應商清單中，若不在則加入一個自訂選項（例如從 Excel 匯入的未知廠商）
               const isKnown = suppliers.some(s => s.name === value);
               const customOption = (value && !isKnown) ? `<option value="${value}" selected>${value} (自訂)</option>` : '';
-              
               const disabledAttr = isViewMode ? 'disabled' : '';
               const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
 
@@ -126,13 +112,10 @@ export function renderOrderEditor({
               `;
             }
 
-            // 特殊處理：製程路線圖 (route) 渲染為下拉選單
             if (f.key === 'route') {
               const orderCategory = getOrderCategory();
-
-              // 嚴格過濾符合該類別的模板
               const availableTemplates = routeTemplates.filter(t => {
-                if (!t.categories || t.categories.length === 0) return true; // 通用
+                if (!t.categories || t.categories.length === 0) return true;
                 if (Array.isArray(t.categories)) return t.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
                 if (typeof t.category === 'string' && t.category.trim() !== '') return t.category.toUpperCase() === orderCategory;
                 return false;
@@ -159,7 +142,6 @@ export function renderOrderEditor({
               `;
             }
 
-            // 一般欄位渲染
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             const disabledAttr = isViewMode ? 'disabled' : '';
             const baseClass = `w-full px-3 py-2.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand transition-colors shadow-sm ${isViewMode ? 'opacity-70 bg-slate-100 cursor-not-allowed' : ''}`;
@@ -167,14 +149,7 @@ export function renderOrderEditor({
             return `
               <div class="flex flex-col gap-1.5">
                 <label class="text-sm font-medium text-slate-700">${f.label}</label>
-                <input 
-                  type="${inputType}" 
-                  data-key="${f.key}" 
-                  value="${value}" 
-                  class="${baseClass}" 
-                  placeholder="請輸入${f.label}"
-                  ${disabledAttr}
-                >
+                <input type="${inputType}" data-key="${f.key}" value="${value}" class="${baseClass}" placeholder="請輸入${f.label}" ${disabledAttr}>
               </div>
             `;
           }).join('')}
@@ -182,12 +157,19 @@ export function renderOrderEditor({
 
         <!-- 💡 工單物料明細區塊 -->
         <div class="mt-8 border-t border-slate-200 pt-6">
-          <div class="flex items-center justify-between mb-4">
+          <div class="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
             <h3 class="text-base font-bold text-slate-800">工單物料明細</h3>
+            
             ${!isViewMode ? `
-              <button id="btn-add-material" class="text-sm text-brand hover:text-brand-hover font-medium flex items-center gap-1">
-                <i data-lucide="plus" class="w-4 h-4"></i> 新增物料
+            <div class="flex items-center gap-2">
+              <input type="text" id="quick-add-mat-input" class="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand w-48" placeholder="快速新增物料名稱...">
+              <button id="btn-quick-add-mat" class="bg-white text-brand border border-brand/30 px-3 py-1.5 rounded-lg text-sm font-medium hover:bg-brand/5 flex items-center gap-1 transition-colors">
+                <i data-lucide="plus" class="w-4 h-4"></i> 新增
               </button>
+              <button id="btn-add-material" class="text-sm text-brand hover:text-brand-hover font-medium flex items-center gap-1 ml-2">
+                新增明細列
+              </button>
+            </div>
             ` : ''}
           </div>
           
@@ -201,9 +183,7 @@ export function renderOrderEditor({
                   ${!isViewMode ? `<th class="pb-2 w-12"></th>` : ''}
                 </tr>
               </thead>
-              <tbody id="material-tbody">
-                <!-- 由 JS 渲染 -->
-              </tbody>
+              <tbody id="material-tbody"></tbody>
             </table>
             <div id="material-empty" class="text-center text-slate-400 text-sm py-4 hidden">尚未新增任何物料</div>
           </div>
@@ -215,7 +195,6 @@ export function renderOrderEditor({
   container.innerHTML = html;
   createIcons({ icons: { Save, RotateCcw, Plus, Trash2 }, attrs: { class: 'w-4 h-4' } });
 
-  // 4. 物料渲染與事件綁定
   const tbody = container.querySelector('#material-tbody');
   const emptyMsg = container.querySelector('#material-empty');
 
@@ -230,13 +209,11 @@ export function renderOrderEditor({
     const orderCategory = getOrderCategory();
 
     tbody.innerHTML = currentMaterials.map((mat, idx) => {
-      // 過濾符合類別的物料
       const availableMaterials = materials.filter(m => {
         if (!m.categories || m.categories.length === 0) return true;
         return m.categories.map(c => String(c).toUpperCase()).includes(orderCategory);
       });
 
-      // 如果該物料不在清單中（可能是舊資料），則加入一個自訂選項
       const isKnown = availableMaterials.some(m => m.id === mat.materialId);
       const customMatOption = (!isKnown && mat.materialId) ? `<option value="${mat.materialId}" selected>${mat.name || '未知物料'} (自訂)</option>` : '';
 
@@ -268,7 +245,6 @@ export function renderOrderEditor({
 
     createIcons({ icons: { Trash2 }, attrs: { class: 'w-4 h-4' } });
 
-    // 綁定事件
     tbody.querySelectorAll('.mat-name-select').forEach(select => {
       select.addEventListener('change', (e) => {
         const idx = parseInt(e.target.closest('tr').dataset.index);
@@ -301,13 +277,49 @@ export function renderOrderEditor({
 
   renderMaterialsTable();
 
-  // 新增物料按鈕
+  // 💡 快速新增物料事件
+  container.querySelector('#btn-quick-add-mat')?.addEventListener('click', async () => {
+    const input = container.querySelector('#quick-add-mat-input');
+    const name = input.value.trim();
+    if (!name) return;
+    
+    if (materials.some(m => m.name === name)) {
+      showToast('該物料已存在，請直接從下拉選單選擇', 'error');
+      return;
+    }
+
+    if (onQuickAddMaterial) {
+      const btn = container.querySelector('#btn-quick-add-mat');
+      btn.innerHTML = '新增中...';
+      btn.disabled = true;
+      
+      try {
+        // 呼叫外部寫入資料庫，並回傳新物件
+        const newMat = await onQuickAddMaterial(name);
+        if (newMat) {
+          materials.push(newMat); // 更新本地陣列
+          // 自動加入明細列
+          currentMaterials.push({ materialId: newMat.id, qty: '', note: '' });
+          renderMaterialsTable();
+          input.value = '';
+          showToast(`已新增物料：${name}`, 'success');
+        }
+      } catch (err) {
+        showToast('新增物料失敗', 'error');
+      } finally {
+        btn.innerHTML = `<i data-lucide="plus" class="w-4 h-4"></i> 新增`;
+        btn.disabled = false;
+        createIcons({ icons: { Plus }, attrs: { class: 'w-4 h-4' } });
+      }
+    }
+  });
+
+  // 新增空白明細列
   container.querySelector('#btn-add-material')?.addEventListener('click', () => {
     currentMaterials.push({ materialId: '', qty: '', note: '' });
     renderMaterialsTable();
   });
 
-  // 5. 其他表單事件 (公式計算與路線圖連動)
   const bodyEl = container.querySelector('#editor-body');
   const inputs = bodyEl.querySelectorAll('input[data-key], select[data-key]');
   
@@ -355,12 +367,10 @@ export function renderOrderEditor({
     input.addEventListener('change', handleInputChange);
   });
 
-  // 取消按鈕
   container.querySelector('#editor-btn-cancel')?.addEventListener('click', () => {
     if (onCancel) onCancel();
   });
 
-  // 儲存按鈕
   container.querySelector('#editor-btn-save')?.addEventListener('click', async () => {
     if (onSave) {
       const finalData = Object.assign({}, initialData); 
@@ -381,12 +391,9 @@ export function renderOrderEditor({
 
       displayFields.forEach(f => {
         if (f.key === 'route' || f.key === 'status') return;
-        
         const val = formData[f.key];
-        
-        // 處理核心欄位與動態欄位
         if (f.key === 'supplierName') {
-           finalData.supplierName = val; // 外發商存在根目錄
+           finalData.supplierName = val;
         } else if (f.isSystem) {
           finalData[f.key] = val;
         } else {
@@ -394,7 +401,6 @@ export function renderOrderEditor({
         }
       });
 
-      // 整理物料資料，並附帶物料名稱（方便匯出與顯示）
       finalData.materials = currentMaterials.map(m => {
         const matchedMat = materials.find(x => x.id === m.materialId);
         return {
@@ -403,7 +409,7 @@ export function renderOrderEditor({
           qty: m.qty,
           note: m.note
         };
-      }).filter(m => m.materialId !== ''); // 過濾掉沒有選物料的空行
+      }).filter(m => m.materialId !== '');
 
       await onSave(finalData);
     }
@@ -412,6 +418,6 @@ export function renderOrderEditor({
 
 /*
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793067000
+V: 1793078000
 W: UPGRADE-007
 */
