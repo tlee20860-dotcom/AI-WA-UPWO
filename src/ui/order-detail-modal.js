@@ -36,53 +36,16 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
   const container = element.querySelector('#modal-editor-container');
 
-  // 💡 處理快速新增物料的邏輯 (由 UI 層呼叫，但在這裡寫入資料庫以保持架構乾淨)
-  const handleQuickAddMaterial = async (name) => {
-    try {
-      const latestSettings = await getDocument('settings', 'main');
-      if (!latestSettings) throw new Error('無法讀取設定檔');
-      
-      const newMatId = 'mat_' + Date.now().toString(36);
-      const newMaterial = {
-        id: newMatId,
-        name: name,
-        categories: [], // 預設不綁定類別，或者可以自動綁定 currentCategory，這裡留空為通用
-        data: {}
-      };
-
-      const updatedMaterials = Array.isArray(latestSettings.materials) ? [...latestSettings.materials] : [];
-      updatedMaterials.push(newMaterial);
-
-      // 只更新 materials 欄位，避免覆蓋其他設定
-      await updateDocument('settings', 'main', { materials: updatedMaterials });
-      
-      // 同步更新 currentSettings，讓背景的畫面能更新
-      if (currentSettings) {
-        currentSettings.materials = updatedMaterials;
-      }
-      
-      // 觸發全域更新事件
-      window.dispatchEvent(new Event('settings-updated'));
-      
-      return newMaterial;
-    } catch (err) {
-      console.error('Quick add material error:', err);
-      throw err;
-    }
-  };
-
   renderOrderEditor({
     container: container,
     schema: currentSettings.schema || [],
     formulas: currentSettings.formulas || {},
     viewConfig: currentSettings.view_configs?.['data-entry'] || currentSettings.view_configs?.['table'] || [],
     routeTemplates: currentSettings.route_templates || [],
-    materials: currentSettings.materials || [],
-    suppliers: currentSettings.suppliers || [],
+    customDatabases: currentSettings.custom_databases || [], // 💡 傳入自訂資料庫
     layoutMode: 'A',
     initialData: initialData,
     isViewMode: false,
-    onQuickAddMaterial: handleQuickAddMaterial, // 💡 傳入
     onSave: async (formData) => {
       const targetId = formData.id || orderId;
       
@@ -92,6 +55,20 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
       }
 
       try {
+        // 💡 儲存前處理：將關聯欄位的 ID 轉換為名稱，讓匯出 Excel 時能顯示人類看得懂的文字
+        (currentSettings.schema || []).forEach(field => {
+          if (field.type === 'relation' && !field.isSystem && formData.data && formData.data[field.key]) {
+            const val = formData.data[field.key];
+            const db = (currentSettings.custom_databases || []).find(d => d.id === field.db_id);
+            if (db) {
+              const item = db.items.find(i => i.id === val || i.name === val);
+              if (item) {
+                formData.data[field.key] = item.name; // 轉存名稱
+              }
+            }
+          }
+        });
+
         if (!orderId) {
           const existing = await getDocument('work_orders', targetId);
           if (existing) {
@@ -134,6 +111,6 @@ export async function openOrderModal({ orderId = null, currentSettings, onSaved 
 
 /*
 F: AI-WA-UPWO/src/ui/order-detail-modal.js
-V: 1793079000
+V: 1793085000
 W: UPGRADE-007
 */
