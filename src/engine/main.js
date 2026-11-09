@@ -1,7 +1,8 @@
 import { initRouter } from './router.js';
-import { getCollection, listenDocument } from '../db/read.js';
+import { getCollection, listenDocument, listenCollection } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
 import { AppState } from '../config/state.js';
+import { initSyncEngine, triggerWriteBack } from './sync-engine.js';
 import '../ui/order-view-editor.js';
 
 const defaultNavConfig = [
@@ -37,6 +38,15 @@ document.addEventListener('DOMContentLoaded', () => {
     listenSettingsUpdates();
     fixLegacyDatesInBackground();
     registerServiceWorker();
+    
+    // 初始化全域 Excel 同步引擎
+    initSyncEngine();
+    
+    // 監聽全域資料變更，觸發寫回 Excel（防抖機制在 sync-engine.js 內部處理）
+    listenCollection('work_orders', (orders) => {
+      triggerWriteBack(orders);
+    });
+    
   } catch (error) {
     console.error('[System Error] 系統啟動失敗:', error);
     root.innerHTML = `
@@ -97,7 +107,7 @@ function listenSettingsUpdates() {
       needSave = true;
     }
 
-    // 2. 💡 低程式碼資料庫無損遷移
+    // 2. 低程式碼資料庫無損遷移
     let currentDbs = Array.isArray(data.custom_databases) ? [...data.custom_databases] : [];
     let dbsChanged = false;
 
@@ -230,8 +240,8 @@ function registerServiceWorker() {
   }
 }
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1793089000
-W: UPGRADE-007
-*/
+V: 1794185500
+W: UPGRADE-009
+═══ */
