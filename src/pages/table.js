@@ -7,10 +7,9 @@ import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { openOrderModal } from '../ui/order-detail-modal.js';
 import { parseExcelData } from '../domain/parser.js';
 import { checkDiff } from '../domain/data-diff.js';
-import { createIcons, Download, FileText, Plus, Upload, RefreshCw } from 'lucide';
+import { createIcons, Download, FileText, Upload, RefreshCw } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -56,9 +55,6 @@ export default {
             <i data-lucide="upload" class="w-4 h-4"></i> 匯入
           </button>
           <input type="file" id="excel-import-input" accept=".xlsx, .xls" class="hidden">
-          <button id="btn-new-order" class="bg-brand text-white border border-brand px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand-hover flex items-center gap-2 shadow-sm transition-colors">
-            <i data-lucide="plus" class="w-4 h-4"></i> 新增工單
-          </button>
           <button id="btn-export-excel" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
             <i data-lucide="download" class="w-4 h-4"></i> Excel
           </button>
@@ -84,15 +80,6 @@ export default {
     document.getElementById('filter-category')?.addEventListener('change', (e) => {
       currentCategory = e.target.value;
       this.updateUI();
-    });
-
-    // 綁定新增工單
-    document.getElementById('btn-new-order')?.addEventListener('click', () => {
-      openOrderModal({ 
-        orderId: null, 
-        currentSettings: currentSettings,
-        onSaved: () => this.updateUI() 
-      });
     });
 
     // 綁定匯入
@@ -125,7 +112,7 @@ export default {
       } catch (err) {}
     });
 
-    createIcons({ icons: { Download, FileText, Plus, Upload, RefreshCw }, attrs: { class: 'w-4 h-4' } });
+    createIcons({ icons: { Download, FileText, Upload, RefreshCw }, attrs: { class: 'w-4 h-4' } });
 
     this.initDataListener();
   },
@@ -204,12 +191,12 @@ export default {
     }
 
     try {
-      directoryHandle = await window.showDirectoryPicker({ mode: 'read' });
+      directoryHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       showToast('已綁定資料夾，開始自動監聽更新', 'success');
       
       const btn = document.getElementById('btn-auto-sync');
       if (btn) {
-        btn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i> 同步中...`;
+        btn.innerHTML = `<i data-lucide="refresh-cw" class="w-4 h-4 animate-spin"></i> 同步中`;
         btn.classList.add('bg-brand/10');
         createIcons({ icons: { RefreshCw }, attrs: { class: 'w-4 h-4' } });
       }
@@ -230,7 +217,7 @@ export default {
     if (!directoryHandle || isSyncing) return;
 
     try {
-      const permission = await directoryHandle.queryPermission({ mode: 'read' });
+      const permission = await directoryHandle.queryPermission({ mode: 'readwrite' });
       if (permission !== 'granted') {
         this.stopAutoSync();
         showToast('資料夾授權已失效，請重新點擊「自動同步」', 'error');
@@ -307,7 +294,7 @@ export default {
             return;
           }
 
-          if (!isAuto) showToast('解析中...', 'info');
+          if (!isAuto) showToast('正在解析資料', 'info');
           
           let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
           let routeTemplates = [];
@@ -404,8 +391,8 @@ export default {
   }
 };
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1793052000
-W: UPGRADE-007
-*/
+V: 1794184800
+W: UPGRADE-009
+═══ */
