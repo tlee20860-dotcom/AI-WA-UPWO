@@ -5,8 +5,6 @@ import { parseWorkbook } from '../domain/parser.js';
 import { updateWorkbookState, saveWorkbookToFile } from '../domain/excel-writer.js';
 import { AppState } from '../config/state.js';
 import { showToast } from '../ui/toast.js';
-import { openModal } from '../ui/modal.js';
-import { createIcons, Link, RefreshCw } from 'lucide';
 
 // 同步引擎狀態
 let fileHandle = null;
@@ -16,11 +14,9 @@ let lastSyncedTime = 0;
 let syncInterval = null;
 let writeBackTimer = null;
 
-// 提供給外部監聽的狀態
 let currentState = { isBound: false, fileName: '', sheets: [] };
 let stateListeners = [];
 
-// IndexedDB 封裝 (用於儲存 FileSystemFileHandle)
 const idb = {
   get: (key) => new Promise((resolve) => {
     const req = indexedDB.open('AppDB', 1);
@@ -47,9 +43,6 @@ const idb = {
   })
 };
 
-/**
- * 初始化同步引擎 (在 main.js 中呼叫)
- */
 export async function initSyncEngine() {
   if (!('showOpenFilePicker' in window)) return;
 
@@ -74,12 +67,8 @@ export async function initSyncEngine() {
   }
 }
 
-/**
- * 註冊狀態監聽器 (供 UI 更新按鈕狀態)
- */
 export function onSyncStateChange(callback) {
   stateListeners.push(callback);
-  // 立即回傳當前狀態
   callback(currentState);
 }
 
@@ -87,11 +76,16 @@ function notifyStateChange() {
   stateListeners.forEach(cb => cb(currentState));
 }
 
-/**
- * 綁定 Excel 檔案 (觸發檔案選擇器與分頁勾選)
- */
 export async function bindExcel() {
+  console.log('[Bind Excel] 點擊綁定按鈕');
+  
+  if (!('showOpenFilePicker' in window)) {
+    showToast('您的瀏覽器不支援此功能，請使用 Chrome 或 Edge', 'error');
+    return;
+  }
+
   try {
+    console.log('[Bind Excel] 準備開啟檔案選擇器');
     const [handle] = await window.showOpenFilePicker({
       types: [{
         description: 'Excel 檔案',
@@ -100,9 +94,11 @@ export async function bindExcel() {
       multiple: false
     });
 
+    console.log('[Bind Excel] 使用者已選擇檔案', handle.name);
+    
     const permission = await handle.requestPermission({ mode: 'readwrite' });
     if (permission !== 'granted') {
-      showToast('需要讀寫權限才能進行雙向同步', 'error');
+      showToast('需要讀寫權限才能進行同步', 'error');
       return;
     }
 
@@ -113,42 +109,60 @@ export async function bindExcel() {
     showSheetSelectionModal(handle, workbook.SheetNames);
 
   } catch (err) {
-    if (err.name === 'AbortError') return;
+    if (err.name === 'AbortError') {
+      console.log('[Bind Excel] 使用者取消選擇');
+      return;
+    }
     console.error('[Bind Excel Error]', err);
-    showToast('綁定失敗', 'error');
+    showToast(`綁定失敗: ${err.message}`, 'error');
   }
 }
 
+// 拔除 openModal 依賴，改用原生 DOM 顯示
 function showSheetSelectionModal(handle, sheetNames) {
-  const content = `
-    <div class="flex flex-col gap-4">
-      <p class="text-sm text-slate-600">請勾選要與網頁同步的工單分頁（系統會自動跳過沒有單號表頭的分頁）：</p>
+  // 建立遮罩層
+  const overlay = document.createElement('div');
+  overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4';
+  
+  const modal = document.createElement('div');
+  modal.className = 'bg-white border border-slate-100 shadow-soft rounded-[20px] w-full max-w-md flex flex-col max-h-[90vh] overflow-hidden';
+  
+  modal.innerHTML = `
+    <div class="flex justify-between items-center p-5 border-b border-slate-100 flex-shrink-0">
+      <h3 class="text-lg font-bold text-slate-900">選擇同步分頁</h3>
+      <button id="close-sheet-modal" class="text-slate-400 hover:text-slate-600">
+        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="p-5 text-slate-600 overflow-y-auto flex-1">
+      <p class="text-sm text-slate-600 mb-4">請勾選要與網頁同步的工單分頁：</p>
       <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
         ${sheetNames.map(name => `
-          <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand">
+          <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand transition-colors">
             <input type="checkbox" class="sheet-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${name}" ${selectedSheets.includes(name) ? 'checked' : ''}>
             <span class="font-medium text-slate-700">${name}</span>
           </label>
         `).join('')}
       </div>
     </div>
-  `;
-
-  const footer = `
-    <div class="flex justify-end gap-3">
-      <button id="modal-cancel-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
-      <button id="modal-confirm-btn" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">確認綁定</button>
+    <div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
+      <button id="cancel-sheet-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+      <button id="confirm-sheet-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">確認綁定</button>
     </div>
   `;
+  
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 
-  const { close, element } = openModal({ title: '選擇同步分頁', content, footer });
+  const closeModal = () => {
+    overlay.remove();
+  };
 
-  element.querySelector('#modal-cancel-btn').addEventListener('click', () => {
-    close();
-  });
+  document.getElementById('close-sheet-modal').addEventListener('click', closeModal);
+  document.getElementById('cancel-sheet-modal').addEventListener('click', closeModal);
 
-  element.querySelector('#modal-confirm-btn').addEventListener('click', async () => {
-    const checked = Array.from(element.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
+  document.getElementById('confirm-sheet-modal').addEventListener('click', async () => {
+    const checked = Array.from(modal.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
     if (checked.length === 0) {
       showToast('請至少選擇一個分頁', 'error');
       return;
@@ -160,7 +174,7 @@ function showSheetSelectionModal(handle, sheetNames) {
     await idb.set('excel_handle', handle);
     localStorage.setItem('excel_selected_sheets', JSON.stringify(selectedSheets));
     
-    close();
+    closeModal();
     
     currentState = { isBound: true, fileName: fileHandle.name, sheets: selectedSheets };
     notifyStateChange();
@@ -177,13 +191,6 @@ function startPolling() {
   syncInterval = setInterval(() => checkForUpdates(), 5000);
 }
 
-function stopPolling() {
-  if (syncInterval) {
-    clearInterval(syncInterval);
-    syncInterval = null;
-  }
-}
-
 async function checkForUpdates() {
   if (!fileHandle || isSyncing) return;
   try {
@@ -195,13 +202,10 @@ async function checkForUpdates() {
       await syncFromExcel();
     }
   } catch (err) {
-    // 忽略輪詢錯誤（例如檔案被短暫鎖定）
+    // 忽略輪詢錯誤
   }
 }
 
-/**
- * 從 Excel 讀取資料並同步到網頁
- */
 export async function syncFromExcel() {
   if (!fileHandle || isSyncing) return;
   isSyncing = true;
@@ -216,7 +220,6 @@ export async function syncFromExcel() {
     let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
     let schema = [];
     let routeTemplates = [];
-    let diffFields = [];
     
     try {
       const s = await getDocument('settings', 'main');
@@ -225,7 +228,6 @@ export async function syncFromExcel() {
         statuses = s.statuses || statuses; 
         schema = s.schema || []; 
         routeTemplates = s.route_templates || [];
-        diffFields = s.diff_fields || [];
       }
     } catch (err) {}
 
@@ -295,9 +297,6 @@ export async function syncFromExcel() {
   }
 }
 
-/**
- * 當網頁資料變更時，觸發寫回 Excel
- */
 export function triggerWriteBack(currentData) {
   if (!fileHandle || selectedSheets.length === 0 || isSyncing) return;
   
@@ -332,6 +331,6 @@ export function triggerWriteBack(currentData) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794185400
+V: 1794185700
 W: UPGRADE-009
 ═══ */
