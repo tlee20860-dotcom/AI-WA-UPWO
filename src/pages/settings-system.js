@@ -1,7 +1,7 @@
 import { showToast } from '../ui/toast.js';
 import { openConfirm, openModal } from '../ui/modal.js';
 import { getCollection } from '../db/read.js';
-import { updateDocument } from '../db/write.js';
+import { updateDocument, deleteDocument } from '../db/write.js';
 import { createIcons, Plus, Trash2, Edit2, AlertCircle } from 'lucide';
 
 /**
@@ -302,20 +302,36 @@ export function renderSystemData(container, currentSettings, saveSettings) {
     <div class="flex justify-between items-center mb-6">
       <div>
         <h2 class="text-lg font-bold text-slate-800">資料管理</h2>
-        <p class="text-sm text-slate-500 mt-1">清除由 Excel 匯入的資料，保留您手動輸入的狀態與交期。</p>
+        <p class="text-sm text-slate-500 mt-1">清除由 Excel 匯入的資料，或徹底刪除所有工單資料。</p>
       </div>
     </div>
 
-    <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6">
-      <h3 class="text-rose-700 font-bold mb-2 flex items-center gap-2">
-        <i data-lucide="alert-circle" class="w-5 h-5"></i> 危險操作區
-      </h3>
-      <p class="text-sm text-rose-600 mb-4">
-        點擊下方按鈕將會清空所有工單中「由 Excel 匯入」的資料。清空後，您可以重新匯入新的 Excel，系統會自動合併狀態。
-      </p>
-      <button id="btn-clear-excel-data" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
-        <i data-lucide="trash-2" class="w-4 h-4"></i> 清空 Excel 匯入資料
-      </button>
+    <div class="flex flex-col gap-6">
+      <!-- 清空 Excel 資料 -->
+      <div class="bg-rose-50 border border-rose-200 rounded-2xl p-6">
+        <h3 class="text-rose-700 font-bold mb-2 flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-5 h-5"></i> 清空 Excel 匯入資料
+        </h3>
+        <p class="text-sm text-rose-600 mb-4">
+          點擊下方按鈕將會清空所有工單中「由 Excel 匯入」的資料。清空後，您可以重新匯入新的 Excel，系統會自動合併狀態。
+        </p>
+        <button id="btn-clear-excel-data" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i> 清空 Excel 資料
+        </button>
+      </div>
+
+      <!-- 徹底刪除所有工單 -->
+      <div class="bg-rose-100 border border-rose-300 rounded-2xl p-6">
+        <h3 class="text-rose-800 font-bold mb-2 flex items-center gap-2">
+          <i data-lucide="alert-circle" class="w-5 h-5"></i> 徹底刪除所有工單
+        </h3>
+        <p class="text-sm text-rose-700 mb-4">
+          <strong>⚠️ 危險操作：</strong>這將會永久刪除資料庫中的「所有」工單，包含所有狀態與自訂欄位，且無法復原。請確認您已經備份資料。
+        </p>
+        <button id="btn-delete-all-orders" class="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-sm font-medium transition-colors shadow-sm flex items-center gap-2">
+          <i data-lucide="trash-2" class="w-4 h-4"></i> 徹底刪除所有工單
+        </button>
+      </div>
     </div>
   `;
 
@@ -330,7 +346,7 @@ export function renderSystemData(container, currentSettings, saveSettings) {
     });
     if (!confirmed) return;
 
-    showToast('正在清空資料...', 'info');
+    showToast('正在清空資料', 'info');
     try {
       const orders = await getCollection('work_orders');
       let count = 0;
@@ -347,10 +363,34 @@ export function renderSystemData(container, currentSettings, saveSettings) {
       showToast('清空失敗，請稍後再試', 'error');
     }
   });
+
+  document.getElementById('btn-delete-all-orders')?.addEventListener('click', async () => {
+    const confirmed = await openConfirm({
+      title: '徹底刪除所有工單',
+      message: '這將會永久刪除資料庫中的「所有」工單資料，且無法復原。您確定要繼續嗎？',
+      isDanger: true,
+      confirmText: '我確定，徹底刪除'
+    });
+    if (!confirmed) return;
+
+    showToast('正在刪除所有工單', 'info');
+    try {
+      const orders = await getCollection('work_orders');
+      let count = 0;
+      for (const order of orders) {
+        await deleteDocument('work_orders', order.id);
+        count++;
+      }
+      showToast(`成功刪除 ${count} 筆工單資料`, 'success');
+    } catch (error) {
+      console.error('Delete all data error:', error);
+      showToast('刪除失敗，請查看 Console', 'error');
+    }
+  });
 }
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-system.js
-V: 1793055000
-W: UPGRADE-007
-*/
+V: 1794187200
+W: UPGRADE-009
+═══ */
