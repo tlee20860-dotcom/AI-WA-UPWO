@@ -2,12 +2,12 @@ import { AppState } from '../config/state.js';
 import { listenCollection, getDocument } from '../db/read.js';
 import { deleteDocument, updateDocument } from '../db/write.js';
 import { renderPageLayout } from '../ui/layout.js';
-import { exportToExcel, exportToPDF } from '../lib/io.js';
+import { exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { bindFolder, downloadLatestExcel, onSyncStateChange } from '../engine/sync-engine.js';
-import { createIcons, Download, FileText, FolderOpen, Save } from 'lucide';
+import { handleExcelUpload, downloadLatestExcel, onSyncStateChange } from '../engine/sync-engine.js';
+import { createIcons, FileText, Upload, Save } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -30,21 +30,20 @@ export default {
       }
     } catch (err) {}
 
-    const isSupported = 'showDirectoryPicker' in window;
-
     renderPageLayout({
       title: '管理總表',
       subtitle: '所有工單的狀態、時間與流程追蹤列表',
       headerActions: `
         <div class="flex flex-wrap items-center gap-2">
-          ${isSupported ? `
-            <button id="btn-bind-folder" class="bg-white text-brand border border-brand/30 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand/5 flex items-center gap-2 shadow-sm transition-colors">
-              <i data-lucide="folder-open" class="w-4 h-4"></i> 綁定資料夾
-            </button>
-          ` : ''}
+          <button id="btn-upload-excel" class="bg-white text-brand border border-brand/30 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand/5 flex items-center gap-2 shadow-sm transition-colors">
+            <i data-lucide="upload" class="w-4 h-4"></i> 上傳 Excel
+          </button>
+          <input type="file" id="excel-upload-input" accept=".xlsx, .xls" class="hidden">
+          
           <button id="btn-download-excel" class="bg-brand text-white border border-brand px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-brand-hover flex items-center gap-2 shadow-sm transition-colors opacity-50 cursor-not-allowed" disabled>
             <i data-lucide="save" class="w-4 h-4"></i> 下載最新進度
           </button>
+          
           <button id="btn-export-pdf" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
             <i data-lucide="file-text" class="w-4 h-4"></i> PDF
           </button>
@@ -66,29 +65,36 @@ export default {
       this.updateUI();
     });
 
-    document.getElementById('btn-bind-folder')?.addEventListener('click', () => {
-      if (typeof bindFolder === 'function') {
-        bindFolder();
-      } else {
-        showToast('同步引擎載入失敗，請按 F5 重新整理', 'error');
-      }
+    // 觸發檔案上傳
+    document.getElementById('btn-upload-excel')?.addEventListener('click', () => {
+      document.getElementById('excel-upload-input').click();
     });
 
+    // 處理檔案選擇
+    document.getElementById('excel-upload-input')?.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (file) {
+        handleExcelUpload(file);
+      }
+      e.target.value = ''; // 清空，允許重複上傳同一個檔案
+    });
+
+    // 觸發下載寫回
     document.getElementById('btn-download-excel')?.addEventListener('click', () => {
       downloadLatestExcel();
     });
 
     onSyncStateChange((state) => {
-      const bindBtn = document.getElementById('btn-bind-folder');
+      const uploadBtn = document.getElementById('btn-upload-excel');
       const downloadBtn = document.getElementById('btn-download-excel');
       
-      if (bindBtn) {
+      if (uploadBtn) {
         if (state.isBound) {
-          bindBtn.innerHTML = `<i data-lucide="folder-open" class="w-4 h-4"></i> 已綁定：${state.fileName}`;
-          bindBtn.classList.add('bg-brand/5');
+          uploadBtn.innerHTML = `<i data-lucide="upload" class="w-4 h-4"></i> 已載入：${state.fileName}`;
+          uploadBtn.classList.add('bg-brand/5');
         } else {
-          bindBtn.innerHTML = `<i data-lucide="folder-open" class="w-4 h-4"></i> 綁定資料夾`;
-          bindBtn.classList.remove('bg-brand/5');
+          uploadBtn.innerHTML = `<i data-lucide="upload" class="w-4 h-4"></i> 上傳 Excel`;
+          uploadBtn.classList.remove('bg-brand/5');
         }
       }
 
@@ -103,7 +109,7 @@ export default {
       }
 
       try {
-        createIcons({ icons: { FolderOpen, Save }, attrs: { class: 'w-4 h-4' } });
+        createIcons({ icons: { Upload, Save }, attrs: { class: 'w-4 h-4' } });
       } catch (e) {
         console.warn('Icon render error:', e);
       }
@@ -125,7 +131,7 @@ export default {
     });
 
     try {
-      createIcons({ icons: { Download, FileText, FolderOpen, Save }, attrs: { class: 'w-4 h-4' } });
+      createIcons({ icons: { FileText, Upload, Save }, attrs: { class: 'w-4 h-4' } });
     } catch (e) {
       console.warn('Icon render error:', e);
     }
@@ -207,6 +213,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1794187000
+V: 1794187500
 W: UPGRADE-009
 ═══ */
