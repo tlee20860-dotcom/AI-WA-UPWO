@@ -19,10 +19,21 @@ function normalizeRoute(route) {
  */
 export function formatExcelDate(val) {
   if (!val) return "";
+  
   if (typeof val === 'string') {
     if (val.includes('T')) return val.split('T')[0];
-    if (val.includes('-') || val.includes('/')) return val.trim();
+    if (val.includes('-') || val.includes('/')) {
+      if (val.includes('/')) {
+        const parts = val.split('/');
+        if (parts.length === 3) {
+          if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
+          if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
+        }
+      }
+      return val.trim();
+    }
   }
+  
   const num = Number(val);
   if (!isNaN(num) && num > 20000 && num < 80000) {
     const date = new Date((num - 25569) * 86400 * 1000);
@@ -72,7 +83,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     ];
   }
 
-  // 名詞替換：若欄位 key 為 route_select 或 route，一律顯示為「製程路線圖」
+  // 名詞替換
   displayFields = displayFields.map(f => {
     if (f.key === 'route_select' || f.key === 'route') {
       return Object.assign({}, f, { label: '製程路線圖' });
@@ -159,9 +170,12 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
 
   // 4. 處理排序與全域篩選
   if (state.sortKey) {
+    // 尋找排序欄位的定義，以判斷是否為日期
+    const sortFieldDef = displayFields.find(f => f.key === state.sortKey) || { key: state.sortKey };
+    
     cleanOrders.sort((a, b) => {
-      let valA = getOrderValue(a, state.sortKey);
-      let valB = getOrderValue(b, state.sortKey);
+      let valA = getOrderValue(a, sortFieldDef);
+      let valB = getOrderValue(b, sortFieldDef);
       return (valA < valB ? -1 : 1) * (state.sortOrder === 'asc' ? 1 : -1);
     });
   }
@@ -170,14 +184,13 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
   if (globalFilter) {
     cleanOrders = cleanOrders.filter(o => {
       return displayFields.some(f => {
-        const val = String(getOrderValue(o, f.key) || '').toLowerCase();
+        const val = String(getOrderValue(o, f) || '').toLowerCase();
         return val.includes(globalFilter);
       });
     });
   }
 
   const allStatuses = AppState.getStatuses() || [];
-  // 判斷是否為工單進度表（看板），允許推進度
   const isKanban = groupBy === 'status' || pageKey === 'kanban';
 
   // 5. 生成 HTML
@@ -220,11 +233,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
     return `
       <div class="glass-card p-4 flex flex-col gap-2">
         ${displayFields.map(f => {
-          const val = getOrderValue(order, f.key);
+          const val = getOrderValue(order, f);
           const diffHtml = renderDiffIcon(order, f.key);
           
           if (f.key === 'id') {
-            // 💡 若為唯讀，單號不生成按鈕
             if (isReadOnly) {
               return `<div class="text-sm"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700 text-base">${val || '-'}</span></div>`;
             }
@@ -232,12 +244,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
           }
           
           if (f.key === 'status') {
-            // 若完全唯讀或不是看板，顯示純文字
             if ((isReadOnly && !allowStatusChange) || !isKanban) {
               return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-bold text-slate-700 ml-1">${order.status}</span>${diffHtml}</div>`;
             }
 
-            // 看板的上下步按鈕
             let route = order.route ? normalizeRoute(order.route) : allStatuses;
             if (route.length === 0) route = allStatuses;
 
@@ -269,7 +279,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          // 顯示製程路線圖（取代原本的下拉選單）
           if (f.key === 'route_select') {
             const orderCat = getOrderCategory(order);
             const availableTemplates = (route_templates || []).filter(t => {
@@ -293,13 +302,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             `;
           }
 
-          // 若為一般顯示 route
           if (f.key === 'route') {
-            let displayVal = normalizeRoute(val).join(' → ');
+            let displayVal = normalizeRoute(order.route).join(' → ');
             return `<div class="text-sm flex flex-col gap-1"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700">${displayVal || '-'}</span>${diffHtml}</div>`;
           }
 
-          // 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
           return `<div class="text-sm flex items-center"><span class="text-slate-400">${f.label}:</span> <span class="font-medium text-slate-700 ml-1">${val || '-'}</span>${diffHtml}</div>`;
         }).join('')}
         ${isAdmin ? `
@@ -330,11 +337,10 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
             ${orderList.map(order => `
               <tr class="hover:bg-slate-50/50 transition-colors">
                 ${displayFields.map(f => {
-                  const val = getOrderValue(order, f.key);
+                  const val = getOrderValue(order, f);
                   const diffHtml = renderDiffIcon(order, f.key);
 
                   if (f.key === 'id') {
-                    // 💡 若為唯讀，單號不生成按鈕
                     if (isReadOnly) {
                       return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${val || '-'}</td>`;
                     }
@@ -346,7 +352,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                       return `<td class="px-4 py-3 whitespace-nowrap font-bold text-slate-700">${order.status}${diffHtml}</td>`;
                     }
 
-                    // 看板的上下步按鈕
                     let route = order.route ? normalizeRoute(order.route) : allStatuses;
                     if (route.length === 0) route = allStatuses;
 
@@ -378,7 +383,6 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     `;
                   }
 
-                  // 顯示製程路線圖（取代原本的下拉選單）
                   if (f.key === 'route_select') {
                     const orderCat = getOrderCategory(order);
                     const availableTemplates = (route_templates || []).filter(t => {
@@ -397,13 +401,11 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
                     return `<td class="px-4 py-3 whitespace-nowrap text-slate-600">${currentMatchName}</td>`;
                   }
                   
-                  // 若為一般顯示 route
                   if (f.key === 'route') {
-                    let displayVal = normalizeRoute(val).join(' → ');
+                    let displayVal = normalizeRoute(order.route).join(' → ');
                     return `<td class="px-4 py-3 whitespace-nowrap text-slate-600">${displayVal || '-'}${diffHtml}</td>`;
                   }
 
-                  // 移除行內編輯：其餘所有可編輯欄位一律顯示純文字
                   return `<td class="px-4 py-3 whitespace-nowrap">${val || '-'}${diffHtml}</td>`;
                 }).join('')}
                 ${isAdmin ? `
@@ -467,23 +469,43 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
 }
 
 /**
- * 取得欄位值 (處理巢狀 data 與特殊日期格式)
+ * 取得欄位值 (處理巢狀 data 與日期格式防呆)
+ * @param {Object} order 工單物件
+ * @param {Object|string} field 欄位定義物件或欄位 key 字串
+ * @returns {any} 欄位值
  */
-function getOrderValue(order, key) {
-  if (key === 'uploadDate' || key === 'dueDate' || key === 'statusUpdateDate') {
-    return formatExcelDate(order[key]);
+function getOrderValue(order, field) {
+  let key, type;
+  
+  if (typeof field === 'string') {
+    key = field;
+  } else if (field && typeof field === 'object') {
+    key = field.key;
+    type = field.type;
+  } else {
+    return '';
   }
+
+  let val;
+
   if (key === 'status') {
-    return order.status || '未知'; 
+    val = order.status || '未知';
+  } else if (order.data && order.data[key] !== undefined) {
+    val = order.data[key];
+  } else {
+    val = order[key] !== undefined ? order[key] : '';
   }
-  if (order.data && order.data[key] !== undefined) {
-    return order.data[key];
+
+  // 日期格式化防呆：若為 date 類型，或已知的核心日期欄位，強制格式化
+  if (type === 'date' || key === 'uploadDate' || key === 'dueDate' || key === 'statusUpdateDate') {
+    return formatExcelDate(val);
   }
-  return order[key] !== undefined ? order[key] : '';
+
+  return val;
 }
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1793092000
-W: UPGRADE-007
-*/
+V: 1794188000
+W: UPGRADE-009
+═══ */
