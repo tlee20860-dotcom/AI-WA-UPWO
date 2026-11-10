@@ -79,6 +79,11 @@ function notifyStateChange() {
 export function bindExcel() {
   console.log('[Bind Excel] 點擊綁定按鈕');
   
+  if (!window.isSecureContext) {
+    showToast('請使用 HTTPS 或 localhost 環境以啟用檔案讀寫功能', 'error');
+    return;
+  }
+
   if (!('showOpenFilePicker' in window)) {
     showToast('您的瀏覽器不支援此功能，請使用 Chrome 或 Edge', 'error');
     return;
@@ -86,14 +91,8 @@ export function bindExcel() {
 
   console.log('[Bind Excel] 準備開啟檔案選擇器');
   
-  // 移除 async/await 包裝，直接同步呼叫 API，避免失去 User Gesture
-  window.showOpenFilePicker({
-    types: [{
-      description: 'Excel 檔案',
-      accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] }
-    }],
-    multiple: false
-  }).then(async ([handle]) => {
+  // 拔除 types 參數，避免某些環境因 MIME 解析導致直接 Abort
+  window.showOpenFilePicker().then(async ([handle]) => {
     if (!handle) {
       console.log('[Bind Excel] 未選擇檔案');
       return;
@@ -101,6 +100,11 @@ export function bindExcel() {
 
     console.log('[Bind Excel] 使用者已選擇檔案', handle.name);
     
+    if (!handle.name.endsWith('.xlsx') && !handle.name.endsWith('.xls')) {
+      showToast('請選擇 Excel 檔案 (.xlsx 或 .xls)', 'error');
+      return;
+    }
+
     // 1. 請求權限
     showToast('正在請求讀寫權限，請點擊瀏覽器提示的「允許」', 'info');
     const permission = await handle.requestPermission({ mode: 'readwrite' });
@@ -122,17 +126,16 @@ export function bindExcel() {
     showSheetSelectionModal(handle, workbook.SheetNames);
 
   }).catch((err) => {
+    console.error('[Bind Excel Error]', err);
     if (err.name === 'AbortError') {
-      console.log('[Bind Excel] 使用者取消選擇或視窗未開啟');
-      showToast('未選擇檔案，請確認是否有彈出系統視窗', 'info');
+      showToast('視窗已被關閉或遭系統阻擋', 'error');
       return;
     }
-    console.error('[Bind Excel Error]', err);
-    showToast(`綁定失敗: ${err.message}。請確認 Excel 檔案是否已關閉。`, 'error');
+    showToast(`綁定失敗: ${err.message}`, 'error');
   });
 }
 
-// 原生 DOM 實作分頁選擇視窗，避免依賴 openModal 載入失敗
+// 原生 DOM 實作分頁選擇視窗
 function showSheetSelectionModal(handle, sheetNames) {
   console.log('[Bind Excel] 準備彈出分頁視窗', sheetNames);
   
@@ -217,7 +220,7 @@ async function checkForUpdates() {
       await syncFromExcel();
     }
   } catch (err) {
-    // 忽略輪詢錯誤（例如檔案被短暫鎖定）
+    // 忽略輪詢錯誤
   }
 }
 
@@ -346,6 +349,6 @@ export function triggerWriteBack(currentData) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794186500
+V: 1794186600
 W: UPGRADE-009
 ═══ */
