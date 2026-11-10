@@ -100,35 +100,23 @@ export function updateWorkbookState(workbook, targetSheetNames, orders) {
 }
 
 /**
- * 將更新後的 workbook 寫回實體檔案
- * @param {FileSystemFileHandle} fileHandle 檔案控制代碼
+ * 將更新後的 workbook 觸發下載
  * @param {Object} workbook 更新後的 workbook 物件
+ * @param {string} fileName 下載的檔案名稱 (例如：2026 開單紀錄_已同步.xlsx)
  */
-export async function saveWorkbookToFile(fileHandle, workbook) {
+export function downloadWorkbook(workbook, fileName) {
   try {
-    // 檢查權限
-    const permission = await fileHandle.queryPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') {
-      throw new Error('沒有寫入權限');
-    }
-
-    // 將 workbook 轉為 ArrayBuffer
-    const wbout = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    
-    // 建立寫入流
-    const writable = await fileHandle.createWritable();
-    await writable.write(wbout);
-    await writable.close();
-    
+    // 使用 XLSX 的 writeFile 直接觸發瀏覽器下載
+    XLSX.writeFile(workbook, fileName, { bookType: 'xlsx' });
     return true;
   } catch (error) {
-    console.error('[Excel Writer Error]', error);
+    console.error('[Excel Download Error]', error);
     throw error;
   }
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/excel-writer.js
-V: 1794185100
+V: 1794186800
 W: UPGRADE-009
 ═══ */
