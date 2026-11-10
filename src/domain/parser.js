@@ -1,3 +1,5 @@
+import * as XLSX from 'xlsx';
+
 /**
  * 將銷售員字串依據對照表進行標準化
  * @param {string} repString 原始字串 (例如: "王小明 / 123")
@@ -335,6 +337,6 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1794185000
+V: 1794187700
 W: UPGRADE-009
 ═══ */
