@@ -6,9 +6,10 @@ import { updateWorkbookState, downloadWorkbook } from '../domain/excel-writer.js
 import { AppState } from '../config/state.js';
 import { showToast } from '../ui/toast.js';
 
-let currentFile = null; // 儲存上次上傳的原始檔案
+let currentFile = null;
 let targetFileName = '';
 let selectedSheets = [];
+let targetMonth = ''; // 用於儲存手動選擇的月份 (YYYY-MM)
 let isSyncing = false;
 
 let currentState = { isBound: false, fileName: '', sheets: [] };
@@ -28,8 +29,9 @@ export function initSyncEngine() {
     const configStr = localStorage.getItem('excel_sync_config');
     if (configStr) {
       const config = JSON.parse(configStr);
-      targetFileName = config.fileName;
-      selectedSheets = config.sheets;
+      targetFileName = config.fileName || '';
+      selectedSheets = config.sheets || [];
+      targetMonth = config.month || '';
       
       currentState = { isBound: true, fileName: targetFileName, sheets: selectedSheets };
       notifyStateChange();
@@ -78,21 +80,28 @@ function showSetupModal(fileName, sheetNames, buffer) {
   
   modal.innerHTML = `
     <div class="flex justify-between items-center p-5 border-b border-slate-100 flex-shrink-0">
-      <h3 class="text-lg font-bold text-slate-900">設定同步分頁</h3>
+      <h3 class="text-lg font-bold text-slate-900">設定同步分頁與月份</h3>
       <button id="close-setup-modal" class="text-slate-400 hover:text-slate-600">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
-    <div class="p-5 text-slate-600 overflow-y-auto flex-1">
-      <p class="text-sm font-bold text-slate-800 mb-4">檔案：${fileName}</p>
-      <p class="text-sm text-slate-600 mb-4">請勾選要與網頁同步的工單分頁：</p>
-      <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-        ${sheetNames.map(name => `
-          <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand transition-colors">
-            <input type="checkbox" class="sheet-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${name}" ${selectedSheets.includes(name) ? 'checked' : ''}>
-            <span class="font-medium text-slate-700">${name}</span>
-          </label>
-        `).join('')}
+    <div class="p-5 text-slate-600 overflow-y-auto flex-1 flex flex-col gap-6">
+      <div class="flex flex-col gap-2">
+        <label class="text-sm font-bold text-slate-800">1. 選擇要讀取的工單分頁</label>
+        <div class="flex flex-col gap-2 max-h-[200px] overflow-y-auto">
+          ${sheetNames.map(name => `
+            <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand transition-colors">
+              <input type="checkbox" class="sheet-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${name}" ${selectedSheets.includes(name) ? 'checked' : ''}>
+              <span class="font-medium text-slate-700">${name}</span>
+            </label>
+          `).join('')}
+        </div>
+      </div>
+
+      <div class="flex flex-col gap-2">
+        <label class="text-sm font-bold text-slate-800">2. 指定匯入月份（選填）</label>
+        <input type="month" id="month-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand" value="${targetMonth}">
+        <p class="text-xs text-slate-500">若留空，將匯入該分頁的所有月份資料。</p>
       </div>
     </div>
     <div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
@@ -110,6 +119,7 @@ function showSetupModal(fileName, sheetNames, buffer) {
 
   document.getElementById('confirm-setup-modal').addEventListener('click', async () => {
     const checked = Array.from(modal.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
+    const selectedMonth = document.getElementById('month-select').value;
     
     if (checked.length === 0) {
       showToast('請至少選擇一個分頁', 'error');
@@ -118,11 +128,13 @@ function showSetupModal(fileName, sheetNames, buffer) {
 
     targetFileName = fileName;
     selectedSheets = checked;
+    targetMonth = selectedMonth;
     currentFile = buffer;
     
     localStorage.setItem('excel_sync_config', JSON.stringify({
       fileName: targetFileName,
-      sheets: selectedSheets
+      sheets: selectedSheets,
+      month: targetMonth
     }));
     
     closeModal();
@@ -157,11 +169,12 @@ export async function syncFromBuffer(buffer = currentFile) {
       console.warn('[Sync Engine] 無法取得 settings', err);
     }
 
-    const parsed = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema);
+    // 傳入 targetMonth 進行手動過濾
+    const parsed = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
     let added = 0, updated = 0;
 
     for (const order of parsed) {
-      if (!order.id) continue; // 確保有 ID 才寫入
+      if (!order.id) continue;
       
       const existing = await getDocument('work_orders', order.id);
       if (existing) {
@@ -217,7 +230,7 @@ export async function syncFromBuffer(buffer = currentFile) {
     if (added > 0 || updated > 0) {
       showToast(`同步完成：新增 ${added}，更新 ${updated}`, 'success');
     } else {
-      showToast('同步完成，但沒有新增或更新資料（請檢查分頁表頭）', 'info');
+      showToast('同步完成，但沒有新增或更新資料（請檢查分頁或月份）', 'info');
     }
   } catch (err) {
     console.error('[Sync From Excel Error]', err);
@@ -251,6 +264,6 @@ export async function downloadLatestExcel() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794187600
+V: 1794187900
 W: UPGRADE-009
 ═══ */
