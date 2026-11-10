@@ -88,6 +88,7 @@ export default {
       }
     });
 
+    // 避免在回呼函式中呼叫 createIcons 導致報錯中斷渲染
     onSyncStateChange((state) => {
       const btn = document.getElementById('btn-bind-excel');
       if (!btn) return;
@@ -98,7 +99,12 @@ export default {
         btn.innerHTML = `<i data-lucide="link" class="w-4 h-4"></i> 綁定 Excel`;
         btn.classList.remove('bg-brand/5');
       }
-      createIcons({ icons: { Link, RefreshCw }, attrs: { class: 'w-4 h-4' } });
+      // 使用 try-catch 確保即使圖示庫出錯，也不會中斷後續渲染
+      try {
+        createIcons({ icons: { Link, RefreshCw }, attrs: { class: 'w-4 h-4' } });
+      } catch (e) {
+        console.warn('Icon render error:', e);
+      }
     });
 
     window.addEventListener('refresh-table', this.updateUI.bind(this));
@@ -116,7 +122,11 @@ export default {
       } catch (err) {}
     });
 
-    createIcons({ icons: { Download, FileText, Upload, RefreshCw, Link }, attrs: { class: 'w-4 h-4' } });
+    try {
+      createIcons({ icons: { Download, FileText, Upload, RefreshCw, Link }, attrs: { class: 'w-4 h-4' } });
+    } catch (e) {
+      console.warn('Icon render error:', e);
+    }
 
     this.initDataListener();
   },
@@ -242,6 +252,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1794186000
+V: 1794186300
 W: UPGRADE-009
 ═══ */
