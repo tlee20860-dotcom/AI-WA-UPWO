@@ -23,7 +23,6 @@ function notifyStateChange() {
   stateListeners.forEach(cb => cb(currentState));
 }
 
-// 嘗試從 localStorage 恢復上次的設定
 export function initSyncEngine() {
   try {
     const configStr = localStorage.getItem('excel_sync_config');
@@ -32,7 +31,6 @@ export function initSyncEngine() {
       targetFileName = config.fileName;
       selectedSheets = config.sheets;
       
-      // 更新 UI 狀態為已綁定 (但實際上檔案內容尚未載入，需重新上傳)
       currentState = { isBound: true, fileName: targetFileName, sheets: selectedSheets };
       notifyStateChange();
     }
@@ -56,18 +54,16 @@ export function handleExcelUpload(file) {
       const buffer = evt.target.result;
       const workbook = XLSX.read(buffer, { type: 'array' });
       
-      // 如果先前已經有選過分頁且檔名相同，自動沿用並開始同步
       if (targetFileName === file.name && selectedSheets.length > 0) {
         currentFile = buffer;
         showToast('檔案讀取成功，開始同步', 'info');
         await syncFromBuffer(buffer);
       } else {
-        // 否則跳出設定視窗
         showSetupModal(file.name, workbook.SheetNames, buffer);
       }
     } catch (err) {
       console.error('[Sync Engine] 解析檔案失敗', err);
-      showToast('無法解析此 Excel 檔案', 'error');
+      showToast(`無法解析此 Excel 檔案: ${err.message}`, 'error');
     }
   };
   reader.readAsArrayBuffer(file);
@@ -157,12 +153,16 @@ export async function syncFromBuffer(buffer = currentFile) {
         schema = s.schema || []; 
         routeTemplates = s.route_templates || [];
       }
-    } catch (err) {}
+    } catch (err) {
+      console.warn('[Sync Engine] 無法取得 settings', err);
+    }
 
     const parsed = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema);
     let added = 0, updated = 0;
 
     for (const order of parsed) {
+      if (!order.id) continue; // 確保有 ID 才寫入
+      
       const existing = await getDocument('work_orders', order.id);
       if (existing) {
         const hasChanged = JSON.stringify(existing.data) !== JSON.stringify(order.data) ||
@@ -182,7 +182,7 @@ export async function syncFromBuffer(buffer = currentFile) {
           updated++;
         }
       } else {
-        const orderCategory = String(order.data.category || '其他').toUpperCase().trim();
+        const orderCategory = String(order.data?.category || '其他').toUpperCase().trim();
         let matchedTemplate = routeTemplates.find(t => {
           if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
             return t.categories.map(c => String(c).toUpperCase().trim()).includes(orderCategory);
@@ -216,10 +216,12 @@ export async function syncFromBuffer(buffer = currentFile) {
 
     if (added > 0 || updated > 0) {
       showToast(`同步完成：新增 ${added}，更新 ${updated}`, 'success');
+    } else {
+      showToast('同步完成，但沒有新增或更新資料（請檢查分頁表頭）', 'info');
     }
   } catch (err) {
     console.error('[Sync From Excel Error]', err);
-    showToast('讀取 Excel 失敗', 'error');
+    showToast(`讀取 Excel 失敗: ${err.message}`, 'error');
   } finally {
     isSyncing = false;
   }
@@ -243,12 +245,12 @@ export async function downloadLatestExcel() {
     showToast('已下載最新進度，請覆蓋原檔', 'success');
   } catch (err) {
     console.error('[Download Error]', err);
-    showToast('下載失敗', 'error');
+    showToast(`下載失敗: ${err.message}`, 'error');
   }
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794187400
+V: 1794187600
 W: UPGRADE-009
 ═══ */
