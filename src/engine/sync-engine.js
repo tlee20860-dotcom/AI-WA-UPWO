@@ -9,7 +9,7 @@ import { showToast } from '../ui/toast.js';
 let currentFile = null;
 let targetFileName = '';
 let selectedSheets = [];
-let targetMonth = ''; // 用於儲存手動選擇的月份 (YYYY-MM)
+let targetMonth = '';
 let isSyncing = false;
 
 let currentState = { isBound: false, fileName: '', sheets: [] };
@@ -41,6 +41,18 @@ export function initSyncEngine() {
   }
 }
 
+// 新增：解除綁定功能
+export function clearBinding() {
+  currentFile = null;
+  targetFileName = '';
+  selectedSheets = [];
+  targetMonth = '';
+  localStorage.removeItem('excel_sync_config');
+  currentState = { isBound: false, fileName: '', sheets: [] };
+  notifyStateChange();
+  showToast('已解除綁定，請重新上傳', 'success');
+}
+
 export function handleExcelUpload(file) {
   console.log('[Sync Engine] 收到上傳檔案', file.name);
   if (!file) return;
@@ -56,13 +68,8 @@ export function handleExcelUpload(file) {
       const buffer = evt.target.result;
       const workbook = XLSX.read(buffer, { type: 'array' });
       
-      if (targetFileName === file.name && selectedSheets.length > 0) {
-        currentFile = buffer;
-        showToast('檔案讀取成功，開始同步', 'info');
-        await syncFromBuffer(buffer);
-      } else {
-        showSetupModal(file.name, workbook.SheetNames, buffer);
-      }
+      // 只要檔案有選擇，一律跳出設定視窗，讓使用者重新確認分頁與月份
+      showSetupModal(file.name, workbook.SheetNames, buffer);
     } catch (err) {
       console.error('[Sync Engine] 解析檔案失敗', err);
       showToast(`無法解析此 Excel 檔案: ${err.message}`, 'error');
@@ -86,6 +93,8 @@ function showSetupModal(fileName, sheetNames, buffer) {
       </button>
     </div>
     <div class="p-5 text-slate-600 overflow-y-auto flex-1 flex flex-col gap-6">
+      <p class="text-sm font-bold text-slate-800 mb-0">檔案：${fileName}</p>
+      
       <div class="flex flex-col gap-2">
         <label class="text-sm font-bold text-slate-800">1. 選擇要讀取的工單分頁</label>
         <div class="flex flex-col gap-2 max-h-[200px] overflow-y-auto">
@@ -169,7 +178,6 @@ export async function syncFromBuffer(buffer = currentFile) {
       console.warn('[Sync Engine] 無法取得 settings', err);
     }
 
-    // 傳入 targetMonth 進行手動過濾
     const parsed = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
     let added = 0, updated = 0;
 
@@ -264,6 +272,6 @@ export async function downloadLatestExcel() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794187900
+V: 1794188100
 W: UPGRADE-009
 ═══ */
