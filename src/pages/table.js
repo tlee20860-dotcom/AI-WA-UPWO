@@ -7,9 +7,8 @@ import { exportToExcel, exportToPDF } from '../lib/io.js';
 import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
-import { parseExcelData } from '../domain/parser.js';
 import { bindExcel, onSyncStateChange } from '../engine/sync-engine.js';
-import { createIcons, Download, FileText, Upload, RefreshCw, Link } from 'lucide';
+import { createIcons, Download, FileText, RefreshCw, Link } from 'lucide';
 
 let unsubscribe = null;
 let currentOrders = [];
@@ -44,10 +43,6 @@ export default {
               <i data-lucide="link" class="w-4 h-4"></i> 綁定 Excel
             </button>
           ` : ''}
-          <button id="btn-import-excel" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
-            <i data-lucide="upload" class="w-4 h-4"></i> 匯入
-          </button>
-          <input type="file" id="excel-import-input" accept=".xlsx, .xls" class="hidden">
           <button id="btn-export-excel" class="bg-white text-slate-700 border border-slate-200 px-3 py-2 rounded-[10px] text-sm font-medium hover:bg-slate-50 flex items-center gap-2 shadow-sm">
             <i data-lucide="download" class="w-4 h-4"></i> Excel
           </button>
@@ -71,13 +66,6 @@ export default {
     document.getElementById('filter-category')?.addEventListener('change', (e) => {
       currentCategory = e.target.value;
       this.updateUI();
-    });
-
-    document.getElementById('btn-import-excel')?.addEventListener('click', () => document.getElementById('excel-import-input').click());
-    document.getElementById('excel-import-input')?.addEventListener('change', (e) => {
-      const file = e.target.files[0];
-      if (file) this.processExcelFile(file);
-      e.target.value = '';
     });
 
     document.getElementById('btn-bind-excel')?.addEventListener('click', () => {
@@ -123,7 +111,7 @@ export default {
     });
 
     try {
-      createIcons({ icons: { Download, FileText, Upload, RefreshCw, Link }, attrs: { class: 'w-4 h-4' } });
+      createIcons({ icons: { Download, FileText, RefreshCw, Link }, attrs: { class: 'w-4 h-4' } });
     } catch (e) {
       console.warn('Icon render error:', e);
     }
@@ -196,53 +184,6 @@ export default {
     }
   },
 
-  processExcelFile(file) {
-    const reader = new FileReader();
-    reader.onload = async (evt) => {
-      try {
-        const workbook = XLSX.read(new Uint8Array(evt.target.result), { type: 'array' });
-        const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]], { header: 1 });
-        
-        if (jsonData.length === 0) {
-          showToast('無資料', 'error');
-          return;
-        }
-        showToast('正在解析資料', 'info');
-        
-        let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
-        try {
-          const s = await getDocument('settings', 'main');
-          if (s) { 
-            salesMapping = s.sales_mapping || []; 
-            statuses = s.statuses || statuses; 
-          }
-        } catch (err) {}
-
-        const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
-        let added = 0, updated = 0;
-
-        for (const order of parsed) {
-          const existing = await getDocument('work_orders', order.id);
-          if (existing) {
-             await updateDocument('work_orders', order.id, { 
-              salesReps: order.salesReps, 
-              uploadDate: order.uploadDate,
-              data: order.data 
-            });
-            updated++;
-          } else {
-             await setDocument('work_orders', order.id, order);
-            added++;
-          }
-        }
-        showToast(`匯入完成！新增 ${added}，更新 ${updated}`, 'success');
-      } catch (error) {
-        showToast(`失敗: ${error.message}`, 'error');
-      }
-    };
-    reader.readAsArrayBuffer(file);
-  },
-
   destroy() {
     if (unsubscribe) unsubscribe();
     window.removeEventListener('refresh-table', this.updateUI.bind(this));
@@ -252,6 +193,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1794186300
+V: 1794186400
 W: UPGRADE-009
 ═══ */
