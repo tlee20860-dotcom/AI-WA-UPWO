@@ -8,7 +8,6 @@ import { showToast } from '../ui/toast.js';
 import { openConfirm } from '../ui/modal.js';
 import { renderOrderView } from '../ui/order-view.js';
 import { parseExcelData } from '../domain/parser.js';
-import { checkDiff } from '../domain/data-diff.js';
 import { bindExcel, onSyncStateChange } from '../engine/sync-engine.js';
 import { createIcons, Download, FileText, Upload, RefreshCw, Link } from 'lucide';
 
@@ -19,7 +18,6 @@ let viewConfig = {};
 let route_templates = [];
 let currentCategory = 'ALL';
 let currentSettings = null;
-let diffFields = [];
 
 export default {
   async render() {
@@ -31,7 +29,6 @@ export default {
         schema = currentSettings.schema || [];
         viewConfig = currentSettings.view_configs || {};
         route_templates = currentSettings.route_templates || [];
-        diffFields = currentSettings.diff_fields || [];
       }
     } catch (err) {}
 
@@ -68,17 +65,14 @@ export default {
       listContainerId: 'table-container'
     });
 
-    // 綁定匯出
     document.getElementById('btn-export-excel')?.addEventListener('click', () => this.handleExport('excel'));
     document.getElementById('btn-export-pdf')?.addEventListener('click', () => this.handleExport('pdf'));
     
-    // 綁定篩選
     document.getElementById('filter-category')?.addEventListener('change', (e) => {
       currentCategory = e.target.value;
       this.updateUI();
     });
 
-    // 綁定手動匯入
     document.getElementById('btn-import-excel')?.addEventListener('click', () => document.getElementById('excel-import-input').click());
     document.getElementById('excel-import-input')?.addEventListener('change', (e) => {
       const file = e.target.files[0];
@@ -86,10 +80,14 @@ export default {
       e.target.value = '';
     });
 
-    // 綁定全域同步引擎的 API
-    document.getElementById('btn-bind-excel')?.addEventListener('click', () => bindExcel());
+    document.getElementById('btn-bind-excel')?.addEventListener('click', () => {
+      if (typeof bindExcel === 'function') {
+        bindExcel();
+      } else {
+        showToast('同步引擎載入失敗，請按 F5 重新整理', 'error');
+      }
+    });
 
-    // 監聽同步引擎狀態，更新按鈕
     onSyncStateChange((state) => {
       const btn = document.getElementById('btn-bind-excel');
       if (!btn) return;
@@ -113,7 +111,6 @@ export default {
           schema = settingsDoc.schema || [];
           viewConfig = settingsDoc.view_configs || {};
           route_templates = settingsDoc.route_templates || [];
-          diffFields = settingsDoc.diff_fields || [];
           this.updateUI();
         }
       } catch (err) {}
@@ -190,7 +187,6 @@ export default {
   },
 
   processExcelFile(file) {
-    // 手動單次匯入
     const reader = new FileReader();
     reader.onload = async (evt) => {
       try {
@@ -213,7 +209,7 @@ export default {
         } catch (err) {}
 
         const parsed = parseExcelData(jsonData[0], jsonData.slice(1), salesMapping, statuses[0], schema);
-        let added = 0, updated = 0, diffCount = 0;
+        let added = 0, updated = 0;
 
         for (const order of parsed) {
           const existing = await getDocument('work_orders', order.id);
@@ -246,6 +242,6 @@ export default {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/table.js
-V: 1794185600
+V: 1794185800
 W: UPGRADE-009
 ═══ */
