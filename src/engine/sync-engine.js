@@ -2,20 +2,23 @@ import * as XLSX from 'xlsx';
 import { getDocument } from '../db/read.js';
 import { updateDocument, setDocument } from '../db/write.js';
 import { parseWorkbook } from '../domain/parser.js';
-import { updateWorkbookState, saveWorkbookToFile } from '../domain/excel-writer.js';
+import { updateWorkbookState, downloadWorkbook } from '../domain/excel-writer.js';
 import { AppState } from '../config/state.js';
 import { showToast } from '../ui/toast.js';
 
-let fileHandle = null;
+// 同步引擎狀態
+let directoryHandle = null;
+let targetFileHandle = null;
+let targetFileName = '';
 let selectedSheets = [];
 let isSyncing = false;
 let lastSyncedTime = 0;
 let syncInterval = null;
-let writeBackTimer = null;
 
 let currentState = { isBound: false, fileName: '', sheets: [] };
 let stateListeners = [];
 
+// 簡單的 IndexedDB 封裝
 const idb = {
   get: (key) => new Promise((resolve) => {
     const req = indexedDB.open('AppDB', 1);
@@ -43,22 +46,30 @@ const idb = {
 };
 
 export async function initSyncEngine() {
-  if (!('showOpenFilePicker' in window)) return;
+  if (!('showDirectoryPicker' in window)) return;
 
   try {
-    const handle = await idb.get('excel_handle');
-    const sheetsStr = localStorage.getItem('excel_selected_sheets');
+    const dirHandle = await idb.get('dir_handle');
+    const configStr = localStorage.getItem('excel_sync_config');
     
-    if (handle && sheetsStr) {
-      fileHandle = handle;
-      selectedSheets = JSON.parse(sheetsStr);
+    if (dirHandle && configStr) {
+      const config = JSON.parse(configStr);
+      const permission = await dirHandle.queryPermission({ mode: 'read' });
       
-      const permission = await fileHandle.queryPermission({ mode: 'readwrite' });
       if (permission === 'granted') {
-        currentState = { isBound: true, fileName: fileHandle.name, sheets: selectedSheets };
-        notifyStateChange();
-        await syncFromExcel();
-        startPolling();
+        directoryHandle = dirHandle;
+        targetFileName = config.fileName;
+        selectedSheets = config.sheets;
+        
+        try {
+          targetFileHandle = await directoryHandle.getFileHandle(targetFileName);
+          currentState = { isBound: true, fileName: targetFileName, sheets: selectedSheets };
+          notifyStateChange();
+          await syncFromExcel();
+          startPolling();
+        } catch (e) {
+          console.warn('找不到原本綁定的檔案', e);
+        }
       }
     }
   } catch (err) {
@@ -75,52 +86,48 @@ function notifyStateChange() {
   stateListeners.forEach(cb => cb(currentState));
 }
 
-export function bindExcel() {
-  console.log('[Bind Excel] 點擊綁定按鈕');
+export async function bindFolder() {
+  console.log('[Bind Folder] 點擊綁定按鈕');
   
-  if (!('showOpenFilePicker' in window)) {
+  if (!('showDirectoryPicker' in window)) {
     showToast('您的瀏覽器不支援此功能，請使用 Chrome 或 Edge', 'error');
     return;
   }
 
-  // 拔除 types 參數，避免某些作業系統因 MIME 類型解析錯誤而攔截視窗
-  window.showOpenFilePicker().then(async ([handle]) => {
-    if (!handle) return;
+  try {
+    // 請求資料夾讀取權限
+    const dirHandle = await window.showDirectoryPicker({ mode: 'read' });
+    if (!dirHandle) return;
 
-    console.log('[Bind Excel] 使用者已選擇檔案', handle.name);
-    
-    if (!handle.name.endsWith('.xlsx') && !handle.name.endsWith('.xls')) {
-      showToast('請選擇 Excel 檔案 (.xlsx 或 .xls)', 'error');
+    console.log('[Bind Folder] 使用者已選擇資料夾', dirHandle.name);
+    const excelFiles = [];
+
+    for await (const entry of dirHandle.values()) {
+      if (entry.kind === 'file' && (entry.name.endsWith('.xlsx') || entry.name.endsWith('.xls'))) {
+        excelFiles.push(entry);
+      }
+    }
+
+    if (excelFiles.length === 0) {
+      showToast('該資料夾內沒有 Excel 檔案', 'error');
       return;
     }
 
-    showToast('正在請求讀寫權限，請點擊瀏覽器提示的「允許」', 'info');
-    const permission = await handle.requestPermission({ mode: 'readwrite' });
-    
-    if (permission !== 'granted') {
-      showToast('未獲得讀寫權限，請重新綁定並點擊「允許」', 'error');
-      return;
-    }
+    // 顯示檔案選擇與分頁勾選 UI
+    showSetupModal(dirHandle, excelFiles);
 
-    showToast('正在讀取 Excel 檔案，請稍候', 'info');
-    const file = await handle.getFile();
-    const buffer = await file.arrayBuffer();
-    
-    const workbook = XLSX.read(buffer, { type: 'array' });
-
-    showSheetSelectionModal(handle, workbook.SheetNames);
-
-  }).catch((err) => {
-    console.error('[Bind Excel Error]', err);
+  } catch (err) {
+    console.error('[Bind Folder Error]', err);
     if (err.name === 'AbortError') {
-      showToast('選擇視窗已關閉或被瀏覽器攔截', 'error');
+      showToast('已取消選擇資料夾', 'info');
       return;
     }
     showToast(`綁定失敗: ${err.message}`, 'error');
-  });
+  }
 }
 
-function showSheetSelectionModal(handle, sheetNames) {
+// 原生 UI：選擇 Excel 檔案與分頁
+function showSetupModal(dirHandle, excelFiles) {
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4';
   
@@ -129,60 +136,100 @@ function showSheetSelectionModal(handle, sheetNames) {
   
   modal.innerHTML = `
     <div class="flex justify-between items-center p-5 border-b border-slate-100 flex-shrink-0">
-      <h3 class="text-lg font-bold text-slate-900">選擇同步分頁</h3>
-      <button id="close-sheet-modal" class="text-slate-400 hover:text-slate-600">
+      <h3 class="text-lg font-bold text-slate-900">設定同步檔案與分頁</h3>
+      <button id="close-setup-modal" class="text-slate-400 hover:text-slate-600">
         <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
       </button>
     </div>
     <div class="p-5 text-slate-600 overflow-y-auto flex-1">
-      <p class="text-sm text-slate-600 mb-4">請勾選要與網頁同步的工單分頁：</p>
-      <div class="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
-        ${sheetNames.map(name => `
-          <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand transition-colors">
-            <input type="checkbox" class="sheet-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${name}" ${selectedSheets.includes(name) ? 'checked' : ''}>
-            <span class="font-medium text-slate-700">${name}</span>
-          </label>
-        `).join('')}
+      <div class="flex flex-col gap-2 mb-6">
+        <label class="text-sm font-bold text-slate-800">1. 選擇要同步的 Excel 檔案</label>
+        <select id="file-select" class="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none">
+          ${excelFiles.map(f => `<option value="${f.name}">${f.name}</option>`).join('')}
+        </select>
+      </div>
+      
+      <div class="flex flex-col gap-2">
+        <label class="text-sm font-bold text-slate-800">2. 勾選要讀取的工單分頁</label>
+        <div id="sheet-list-container" class="flex flex-col gap-2 max-h-[250px] overflow-y-auto p-1">
+          <div class="text-sm text-slate-400 text-center py-4">請先在上方選擇檔案</div>
+        </div>
       </div>
     </div>
     <div class="p-4 border-t border-slate-100 flex justify-end gap-3 bg-white">
-      <button id="cancel-sheet-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
-      <button id="confirm-sheet-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">確認綁定</button>
+      <button id="cancel-setup-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-slate-600 bg-slate-100 hover:bg-slate-200">取消</button>
+      <button id="confirm-setup-modal" class="px-4 py-2 rounded-xl text-sm font-medium text-white bg-brand hover:bg-brand-hover">確認綁定</button>
     </div>
   `;
   
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 
-  const closeModal = () => {
-    overlay.remove();
+  const fileSelect = document.getElementById('file-select');
+  const sheetListContainer = document.getElementById('sheet-list-container');
+  let currentSheetNames = [];
+
+  const loadSheets = async (fileName) => {
+    sheetListContainer.innerHTML = '<div class="text-sm text-slate-400 text-center py-4">讀取中</div>';
+    try {
+      const fileHandle = await dirHandle.getFileHandle(fileName);
+      const file = await fileHandle.getFile();
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      currentSheetNames = workbook.SheetNames;
+      
+      sheetListContainer.innerHTML = currentSheetNames.map(name => `
+        <label class="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg cursor-pointer hover:border-brand transition-colors">
+          <input type="checkbox" class="sheet-checkbox w-4 h-4 text-brand rounded border-slate-300 focus:ring-brand" value="${name}" checked>
+          <span class="font-medium text-slate-700">${name}</span>
+        </label>
+      `).join('');
+    } catch (err) {
+      sheetListContainer.innerHTML = `<div class="text-sm text-rose-500 text-center py-4">讀取失敗：請確認檔案是否被鎖定</div>`;
+    }
   };
 
-  document.getElementById('close-sheet-modal').addEventListener('click', closeModal);
-  document.getElementById('cancel-sheet-modal').addEventListener('click', closeModal);
+  fileSelect.addEventListener('change', (e) => loadSheets(e.target.value));
+  // 初始載入第一個檔案
+  loadSheets(excelFiles[0].name);
 
-  document.getElementById('confirm-sheet-modal').addEventListener('click', async () => {
+  const closeModal = () => overlay.remove();
+  document.getElementById('close-setup-modal').addEventListener('click', closeModal);
+  document.getElementById('cancel-setup-modal').addEventListener('click', closeModal);
+
+  document.getElementById('confirm-setup-modal').addEventListener('click', async () => {
+    const targetFile = fileSelect.value;
     const checked = Array.from(modal.querySelectorAll('.sheet-checkbox:checked')).map(cb => cb.value);
+    
     if (checked.length === 0) {
       showToast('請至少選擇一個分頁', 'error');
       return;
     }
 
-    fileHandle = handle;
+    directoryHandle = dirHandle;
+    targetFileName = targetFile;
     selectedSheets = checked;
     
-    await idb.set('excel_handle', handle);
-    localStorage.setItem('excel_selected_sheets', JSON.stringify(selectedSheets));
-    
-    closeModal();
-    
-    currentState = { isBound: true, fileName: fileHandle.name, sheets: selectedSheets };
-    notifyStateChange();
-    
-    showToast('綁定成功，開始同步資料', 'success');
-    
-    await syncFromExcel();
-    startPolling();
+    try {
+      targetFileHandle = await directoryHandle.getFileHandle(targetFileName);
+      await idb.set('dir_handle', directoryHandle);
+      localStorage.setItem('excel_sync_config', JSON.stringify({
+        fileName: targetFileName,
+        sheets: selectedSheets
+      }));
+      
+      closeModal();
+      
+      currentState = { isBound: true, fileName: targetFileName, sheets: selectedSheets };
+      notifyStateChange();
+      
+      showToast('綁定成功，開始同步資料', 'success');
+      
+      await syncFromExcel();
+      startPolling();
+    } catch (err) {
+      showToast('綁定失敗，請重試', 'error');
+    }
   });
 }
 
@@ -192,12 +239,9 @@ function startPolling() {
 }
 
 async function checkForUpdates() {
-  if (!fileHandle || isSyncing) return;
+  if (!targetFileHandle || isSyncing) return;
   try {
-    const permission = await fileHandle.queryPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') return;
-
-    const file = await fileHandle.getFile();
+    const file = await targetFileHandle.getFile();
     if (file.lastModified > lastSyncedTime + 1000) {
       await syncFromExcel();
     }
@@ -207,11 +251,11 @@ async function checkForUpdates() {
 }
 
 export async function syncFromExcel() {
-  if (!fileHandle || isSyncing) return;
+  if (!targetFileHandle || isSyncing) return;
   isSyncing = true;
 
   try {
-    const file = await fileHandle.getFile();
+    const file = await targetFileHandle.getFile();
     const buffer = await file.arrayBuffer();
     const workbook = XLSX.read(buffer, { type: 'array' });
     
@@ -291,46 +335,46 @@ export async function syncFromExcel() {
     }
   } catch (err) {
     console.error('[Sync From Excel Error]', err);
-    showToast('讀取 Excel 失敗，請確認檔案是否被鎖定', 'error');
+    // 這裡不跳 Toast，避免每 5 秒干擾使用者
   } finally {
     isSyncing = false;
   }
 }
 
-export function triggerWriteBack(currentData) {
-  if (!fileHandle || selectedSheets.length === 0 || isSyncing) return;
-  
-  if (writeBackTimer) clearTimeout(writeBackTimer);
-  
-  writeBackTimer = setTimeout(async () => {
-    isSyncing = true;
-    try {
-      const file = await fileHandle.getFile();
-      
-      if (file.lastModified > lastSyncedTime + 1000) {
-        isSyncing = false;
-        return;
-      }
+/**
+ * 下載包含最新網頁狀態的 Excel
+ */
+export async function downloadLatestExcel() {
+  if (!targetFileHandle) {
+    showToast('請先綁定資料夾與 Excel 檔案', 'error');
+    return;
+  }
 
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
+  try {
+    const file = await targetFileHandle.getFile();
+    const buffer = await file.arrayBuffer();
+    const workbook = XLSX.read(buffer, { type: 'array' });
 
-      const updatedWorkbook = updateWorkbookState(workbook, selectedSheets, currentData);
-      await saveWorkbookToFile(fileHandle, updatedWorkbook);
-      
-      const newFile = await fileHandle.getFile();
-      lastSyncedTime = newFile.lastModified;
-      
-    } catch (err) {
-      console.warn('[Write Back Error]', err);
-    } finally {
-      isSyncing = false;
-    }
-  }, 1000);
+    // 取得所有工單最新資料
+    const { getCollection } = await import('../db/read.js');
+    const allOrders = await getCollection('work_orders');
+
+    // 更新 Workbook
+    const updatedWorkbook = updateWorkbookState(workbook, selectedSheets, allOrders);
+
+    // 觸發下載
+    const downloadName = targetFileName.replace(/\.(xlsx|xls)$/i, '_已同步.xlsx');
+    downloadWorkbook(updatedWorkbook, downloadName);
+    
+    showToast('已下載最新進度，請覆蓋原檔', 'success');
+  } catch (err) {
+    console.error('[Download Error]', err);
+    showToast('下載失敗，請檢查檔案是否被鎖定', 'error');
+  }
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794186700
+V: 1794186900
 W: UPGRADE-009
 ═══ */
