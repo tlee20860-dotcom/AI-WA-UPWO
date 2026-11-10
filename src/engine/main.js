@@ -1,8 +1,8 @@
 import { initRouter } from './router.js';
-import { getCollection, listenDocument, listenCollection } from '../db/read.js';
+import { getCollection, listenDocument } from '../db/read.js';
 import { updateDocument } from '../db/write.js';
 import { AppState } from '../config/state.js';
-import { initSyncEngine, triggerWriteBack } from './sync-engine.js';
+import { initSyncEngine } from './sync-engine.js';
 import '../ui/order-view-editor.js';
 
 const defaultNavConfig = [
@@ -39,14 +39,8 @@ document.addEventListener('DOMContentLoaded', () => {
     fixLegacyDatesInBackground();
     registerServiceWorker();
     
-    // 初始化全域 Excel 同步引擎 (恢復綁定狀態、啟動輪詢)
+    // 初始化全域 Excel 同步引擎 (恢復綁定狀態、啟動唯讀輪詢)
     initSyncEngine();
-    
-    // 全域監聽資料庫變更，若資料有更新則觸發寫回 Excel
-    // (sync-engine.js 內部有防抖與防迴圈機制，確保高頻更新時不會卡死)
-    listenCollection('work_orders', (orders) => {
-      triggerWriteBack(orders);
-    });
     
   } catch (error) {
     console.error('[System Error] 系統啟動失敗:', error);
@@ -243,6 +237,6 @@ function registerServiceWorker() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1794186100
+V: 1794187100
 W: UPGRADE-009
 ═══ */
