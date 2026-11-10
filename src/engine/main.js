@@ -39,10 +39,11 @@ document.addEventListener('DOMContentLoaded', () => {
     fixLegacyDatesInBackground();
     registerServiceWorker();
     
-    // 初始化全域 Excel 同步引擎
+    // 初始化全域 Excel 同步引擎 (恢復綁定狀態、啟動輪詢)
     initSyncEngine();
     
-    // 監聽全域資料變更，觸發寫回 Excel（防抖機制在 sync-engine.js 內部處理）
+    // 全域監聽資料庫變更，若資料有更新則觸發寫回 Excel
+    // (sync-engine.js 內部有防抖與防迴圈機制，確保高頻更新時不會卡死)
     listenCollection('work_orders', (orders) => {
       triggerWriteBack(orders);
     });
@@ -242,6 +243,6 @@ function registerServiceWorker() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/main.js
-V: 1794185500
+V: 1794186100
 W: UPGRADE-009
 ═══ */
