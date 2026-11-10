@@ -76,7 +76,7 @@ function notifyStateChange() {
   stateListeners.forEach(cb => cb(currentState));
 }
 
-export async function bindExcel() {
+export function bindExcel() {
   console.log('[Bind Excel] 點擊綁定按鈕');
   
   if (!('showOpenFilePicker' in window)) {
@@ -84,16 +84,16 @@ export async function bindExcel() {
     return;
   }
 
-  try {
-    console.log('[Bind Excel] 準備開啟檔案選擇器');
-    const [handle] = await window.showOpenFilePicker({
-      types: [{
-        description: 'Excel 檔案',
-        accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] }
-      }],
-      multiple: false
-    });
-
+  console.log('[Bind Excel] 準備開啟檔案選擇器');
+  
+  // 移除 async/await 包裝，直接同步呼叫 API，避免失去 User Gesture
+  window.showOpenFilePicker({
+    types: [{
+      description: 'Excel 檔案',
+      accept: { 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'], 'application/vnd.ms-excel': ['.xls'] }
+    }],
+    multiple: false
+  }).then(async ([handle]) => {
     if (!handle) {
       console.log('[Bind Excel] 未選擇檔案');
       return;
@@ -121,14 +121,15 @@ export async function bindExcel() {
     // 4. 彈出分頁選擇視窗
     showSheetSelectionModal(handle, workbook.SheetNames);
 
-  } catch (err) {
+  }).catch((err) => {
     if (err.name === 'AbortError') {
-      console.log('[Bind Excel] 使用者取消選擇');
+      console.log('[Bind Excel] 使用者取消選擇或視窗未開啟');
+      showToast('未選擇檔案，請確認是否有彈出系統視窗', 'info');
       return;
     }
     console.error('[Bind Excel Error]', err);
     showToast(`綁定失敗: ${err.message}。請確認 Excel 檔案是否已關閉。`, 'error');
-  }
+  });
 }
 
 // 原生 DOM 實作分頁選擇視窗，避免依賴 openModal 載入失敗
@@ -216,7 +217,7 @@ async function checkForUpdates() {
       await syncFromExcel();
     }
   } catch (err) {
-    // 忽略輪詢錯誤
+    // 忽略輪詢錯誤（例如檔案被短暫鎖定）
   }
 }
 
@@ -345,6 +346,6 @@ export function triggerWriteBack(currentData) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794186200
+V: 1794186500
 W: UPGRADE-009
 ═══ */
