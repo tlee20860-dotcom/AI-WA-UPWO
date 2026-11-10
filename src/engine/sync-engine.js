@@ -94,18 +94,31 @@ export async function bindExcel() {
       multiple: false
     });
 
-    console.log('[Bind Excel] 使用者已選擇檔案', handle.name);
-    
-    const permission = await handle.requestPermission({ mode: 'readwrite' });
-    if (permission !== 'granted') {
-      showToast('需要讀寫權限才能進行同步', 'error');
+    if (!handle) {
+      console.log('[Bind Excel] 未選擇檔案');
       return;
     }
 
+    console.log('[Bind Excel] 使用者已選擇檔案', handle.name);
+    
+    // 1. 請求權限
+    showToast('正在請求讀寫權限，請點擊瀏覽器提示的「允許」', 'info');
+    const permission = await handle.requestPermission({ mode: 'readwrite' });
+    
+    if (permission !== 'granted') {
+      showToast('未獲得讀寫權限，請重新綁定並點擊「允許」', 'error');
+      return;
+    }
+
+    // 2. 讀取檔案
+    showToast('正在讀取 Excel 檔案，請稍候', 'info');
     const file = await handle.getFile();
     const buffer = await file.arrayBuffer();
+    
+    // 3. 解析 Excel
     const workbook = XLSX.read(buffer, { type: 'array' });
 
+    // 4. 彈出分頁選擇視窗
     showSheetSelectionModal(handle, workbook.SheetNames);
 
   } catch (err) {
@@ -114,13 +127,14 @@ export async function bindExcel() {
       return;
     }
     console.error('[Bind Excel Error]', err);
-    showToast(`綁定失敗: ${err.message}`, 'error');
+    showToast(`綁定失敗: ${err.message}。請確認 Excel 檔案是否已關閉。`, 'error');
   }
 }
 
-// 拔除 openModal 依賴，改用原生 DOM 顯示
+// 原生 DOM 實作分頁選擇視窗，避免依賴 openModal 載入失敗
 function showSheetSelectionModal(handle, sheetNames) {
-  // 建立遮罩層
+  console.log('[Bind Excel] 準備彈出分頁視窗', sheetNames);
+  
   const overlay = document.createElement('div');
   overlay.className = 'fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] flex items-center justify-center p-4';
   
@@ -331,6 +345,6 @@ export function triggerWriteBack(currentData) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794185900
+V: 1794186200
 W: UPGRADE-009
 ═══ */
