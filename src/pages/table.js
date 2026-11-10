@@ -76,7 +76,6 @@ export default {
       }
     });
 
-    // 避免在回呼函式中呼叫 createIcons 導致報錯中斷渲染
     onSyncStateChange((state) => {
       const btn = document.getElementById('btn-bind-excel');
       if (!btn) return;
@@ -87,7 +86,6 @@ export default {
         btn.innerHTML = `<i data-lucide="link" class="w-4 h-4"></i> 綁定 Excel`;
         btn.classList.remove('bg-brand/5');
       }
-      // 使用 try-catch 確保即使圖示庫出錯，也不會中斷後續渲染
       try {
         createIcons({ icons: { Link, RefreshCw }, attrs: { class: 'w-4 h-4' } });
       } catch (e) {
