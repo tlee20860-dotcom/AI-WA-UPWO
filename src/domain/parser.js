@@ -45,15 +45,13 @@ export function normalizeSalesRep(repString, salesMapping) {
  * @returns {string} 格式化後的日期字串
  */
 function formatExcelDate(val) {
-  if (!val) return "";
+  if (val === undefined || val === null || val === '') return "";
   
   // 如果已經是正常的日期字串 (包含 - 或 /)
   if (typeof val === 'string' && (val.includes('-') || val.includes('/'))) {
-    // 簡單處理 YYYY/MM/DD -> YYYY-MM-DD
     if (val.includes('/')) {
       const parts = val.split('/');
       if (parts.length === 3) {
-        // 假設年份是4位數
         if (parts[0].length === 4) return `${parts[0]}-${parts[1].padStart(2,'0')}-${parts[2].padStart(2,'0')}`;
         if (parts[2].length === 4) return `${parts[2]}-${parts[1].padStart(2,'0')}-${parts[0].padStart(2,'0')}`;
       }
@@ -61,12 +59,11 @@ function formatExcelDate(val) {
     return val.trim();
   }
 
-  // 處理 Excel 序列號 (通常介於 20000 到 60000 之間)
+  // 處理 Excel 序列號 (通常介於 20000 到 80000 之間)
   const num = Number(val);
   if (!isNaN(num) && num > 20000 && num < 80000) {
     // Excel 起始日為 1899-12-30
     const date = new Date((num - 25569) * 86400 * 1000);
-    // 檢查是否為有效日期
     if (!isNaN(date.getTime())) {
       return date.toISOString().split('T')[0];
     }
@@ -83,9 +80,10 @@ function formatExcelDate(val) {
  * @param {Array} salesMapping 銷售員對照表
  * @param {string} defaultStatus 預設狀態 (如 "排產中")
  * @param {Array} schema 系統欄位定義
+ * @param {string} targetMonth 指定過濾的月份 (格式 YYYY-MM，若為空則不篩選)
  * @returns {Array<Object>} 標準化後的工單物件陣列
  */
-export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排產中", schema = []) {
+export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排產中", schema = [], targetMonth = "") {
   const nowStr = new Date().toISOString();
   const parsedOrders = [];
 
@@ -105,7 +103,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   }
 
   if (headerIdx === -1) {
-    // 如果找不到表頭，直接回傳空陣列，由上層決定是否報錯 (避免多分頁掃描時中斷)
     return [];
   }
 
@@ -125,7 +122,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 核心欄位別名映射表 (用於識別匯出的 Excel 或公司系統報表)
+  // 核心欄位別名映射表
   const coreAliases = {
     id: ['工單號碼', '單號', '發票', 'id', '登錄'],
     status: ['狀態', '生產進度', 'status'],
@@ -139,7 +136,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     category: ['類別', 'category', '工單類別']
   };
 
-  // 找出核心欄位在 Excel 中的索引
   const coreIndices = {};
   Object.keys(coreAliases).forEach(key => {
     const aliases = coreAliases[key];
@@ -149,7 +145,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 檢查必要的系統核心欄位是否存在
   let idIdx = coreIndices['id'];
   if (idIdx === undefined) {
     idIdx = columnMap['id'];
@@ -162,19 +157,29 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
   // 3. 逐列解析
   for (const row of dataRows) {
-    // 跳過完全空白的列（防呆）
     if (!row || row.length === 0) continue;
 
     const rawIdVal = row[coreIndices['id']];
     const orderId = rawIdVal !== undefined && rawIdVal !== null ? String(rawIdVal).trim() : "";
     
-    // 核心邏輯：遇到 A 欄（工單號碼）為空，直接中斷迴圈（完美剔除尾部的總計與備註）
     if (!orderId) {
       break;
     }
 
     // --- 解析核心欄位 ---
     
+    // 上傳/開單日期 (uploadDate) - 先解析出來，因為要用來比對月份
+    let uploadDate = nowStr.split('T')[0];
+    if (coreIndices['uploadDate'] !== undefined && row[coreIndices['uploadDate']] !== undefined) {
+      const formatted = formatExcelDate(row[coreIndices['uploadDate']]);
+      if (formatted) uploadDate = formatted;
+    }
+
+    // 月份過濾防呆：若有指定月份，且開單日期不符合，則跳過該筆
+    if (targetMonth && !uploadDate.startsWith(targetMonth)) {
+      continue;
+    }
+
     // 狀態 (status)
     let status = defaultStatus;
     if (coreIndices['status'] !== undefined && row[coreIndices['status']] !== undefined) {
@@ -182,7 +187,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       if (val) status = val;
     }
 
-    // 製程路線 (route) - 從 "A → B → C" 或 "A, B, C" 轉回陣列
+    // 製程路線 (route)
     let route = [];
     if (coreIndices['route'] !== undefined && row[coreIndices['route']] !== undefined) {
       const val = String(row[coreIndices['route']]).trim();
@@ -210,13 +215,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       dueDate = formatExcelDate(row[coreIndices['dueDate']]);
     }
 
-    // 上傳/開單日期 (uploadDate)
-    let uploadDate = nowStr.split('T')[0];
-    if (coreIndices['uploadDate'] !== undefined && row[coreIndices['uploadDate']] !== undefined) {
-      const formatted = formatExcelDate(row[coreIndices['uploadDate']]);
-      if (formatted) uploadDate = formatted;
-    }
-
     // 來源 (source)
     let source = "excel";
     if (coreIndices['source'] !== undefined && row[coreIndices['source']] !== undefined) {
@@ -242,7 +240,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     // --- 收集動態欄位資料 ---
     const data = {};
     
-    // 類別 (優先從 Excel 的類別欄位抓取，若無則從單號前兩碼擷取)
     if (coreIndices['category'] !== undefined && row[coreIndices['category']] !== undefined) {
       const val = String(row[coreIndices['category']]).trim();
       if (val) {
@@ -256,10 +253,15 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
 
     schema.forEach(field => {
-      // 排除系統核心欄位與 id (狀態、路線、區域已在上面處理)
       const isCoreHandled = ['id', 'status', 'route', 'area'].includes(field.key);
       if (!field.isSystem && !isCoreHandled && columnMap[field.key] !== undefined) {
-        const val = row[columnMap[field.key]];
+        let val = row[columnMap[field.key]];
+        
+        // 💡 防呆：若該自訂欄位被定義為 date 類型，強制轉換為標準日期格式
+        if (field.type === 'date' && val !== undefined && val !== null && val !== '') {
+          val = formatExcelDate(val);
+        }
+        
         data[field.key] = val !== undefined && val !== null ? val : "";
       }
     });
@@ -283,35 +285,34 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 }
 
 /**
- * 解析整份 Excel 活頁簿（支援指定分頁與多分頁合併）
+ * 解析整份 Excel 活頁簿（支援指定分頁、多分頁合併與月份過濾）
  * @param {Object} workbook XLSX 的 workbook 物件
- * @param {Array<string>} targetSheetNames 指定要讀取的分頁名稱，若為空則自動掃描所有分頁
+ * @param {Array<string>} targetSheetNames 指定要讀取的分頁名稱
  * @param {Array} salesMapping 銷售員對照表
  * @param {string} defaultStatus 預設狀態
  * @param {Array} schema 系統欄位定義
+ * @param {string} targetMonth 指定過濾的月份 (格式 YYYY-MM)
  * @returns {Array<Object>} 合併後的工單物件陣列
  */
-export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, defaultStatus, schema) {
+export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, defaultStatus, schema, targetMonth = "") {
   const allParsedOrders = [];
   const sheetsToParse = targetSheetNames.length > 0 ? targetSheetNames : workbook.SheetNames;
 
   for (const sheetName of sheetsToParse) {
-    // 確保該分頁存在
     if (!workbook.Sheets[sheetName]) continue;
 
     const sheet = workbook.Sheets[sheetName];
-    // 將分頁轉為二維陣列 (header: 1)
     const jsonData = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
     if (jsonData.length === 0) continue;
 
-    // 呼叫既有的解析器，若回傳空陣列代表這個分頁找不到表頭，直接跳過
     const parsed = parseExcelData(
       jsonData[0], 
       jsonData.slice(1), 
       salesMapping, 
       defaultStatus, 
-      schema
+      schema,
+      targetMonth
     );
 
     if (parsed.length > 0) {
@@ -319,11 +320,10 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
     }
   }
 
-  // 去除重複單號 (若有跨分頁重複，以最後讀取到的為準)
+  // 去除重複單號
   const uniqueOrders = [];
   const seenIds = new Set();
   
-  // 從後往前遍歷，保留最後出現的
   for (let i = allParsedOrders.length - 1; i >= 0; i--) {
     const order = allParsedOrders[i];
     if (!seenIds.has(order.id)) {
@@ -337,6 +337,6 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1794187700
+V: 1794187800
 W: UPGRADE-009
 ═══ */
