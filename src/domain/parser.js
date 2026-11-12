@@ -93,7 +93,7 @@ function parseCurrency(val) {
  * @param {Array<string>} headers Excel 第一列的標題 (可能不是真正的表頭)
  * @param {Array<Array<any>>} rows Excel 的資料列（不含第一列）
  * @param {Array} salesMapping 銷售員對照表
- * @param {string} defaultStatus 預設狀態 (如 "排產中")
+ * @param {string} defaultStatus 預設狀態 (保留參數但不使用)
  * @param {Array} schema 系統欄位定義
  * @param {string} targetMonth 指定過濾的月份 (格式 YYYY-MM，若為空則不篩選)
  * @returns {Object} 包含 parsedOrders (解析後的工單陣列) 與 foundHeaders (所有出現的表頭)
@@ -141,12 +141,10 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     }
   });
 
-  // 核心欄位別名映射表 (用於識別匯出的 Excel 或公司系統報表)
+  // 核心欄位別名映射表 
+  // 💡 重要修改：移除 status, route, area 的映射，讓這三個欄位完全由網頁控制
   const coreAliases = {
     id: ['工單號碼', '單號', '發票', 'id', '登錄'],
-    status: ['狀態', '生產進度', 'status'],
-    route: ['製程路線', '製程路線圖管理', 'route'],
-    area: ['區域', 'area'],
     dueDate: ['交貨日期', '交貨日', '預計日期', 'dueDate'],
     uploadDate: ['上傳日期', '開單日期', '日期', 'uploadDate'],
     salesReps: ['銷售員', 'salesRep', 'salesReps', '我方備考', 'SALES編號', 'SALES'],
@@ -200,35 +198,6 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       continue;
     }
 
-    // 狀態 (status)
-    let status = defaultStatus;
-    if (coreIndices['status'] !== undefined && row[coreIndices['status']] !== undefined) {
-      const val = String(row[coreIndices['status']]).trim();
-      if (val) status = val;
-    }
-
-    // 製程路線 (route)
-    let route = [];
-    if (coreIndices['route'] !== undefined && row[coreIndices['route']] !== undefined) {
-      const val = String(row[coreIndices['route']]).trim();
-      if (val) {
-        if (val.includes(',')) {
-          route = val.split(',').map(s => s.trim()).filter(Boolean);
-        } else if (val.includes('→')) {
-          route = val.split('→').map(s => s.trim()).filter(Boolean);
-        } else {
-          route = [val];
-        }
-      }
-    }
-
-    // 區域 (area)
-    let area = "";
-    if (coreIndices['area'] !== undefined && row[coreIndices['area']] !== undefined) {
-      const val = String(row[coreIndices['area']]).trim();
-      if (val) area = val;
-    }
-
     // 交貨日期 (dueDate)
     let dueDate = "";
     if (coreIndices['dueDate'] !== undefined && row[coreIndices['dueDate']] !== undefined) {
@@ -272,8 +241,10 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       data['category'] = categoryMatch ? categoryMatch[0].toUpperCase() : '其他';
     }
 
+    // 處理自訂欄位
     schema.forEach(field => {
-      const isCoreHandled = ['id', 'status', 'route', 'area'].includes(field.key);
+      // 確保不重複處理已由核心邏輯處理的欄位
+      const isCoreHandled = ['id'].includes(field.key);
       if (!field.isSystem && !isCoreHandled && columnMap[field.key] !== undefined) {
         let val = row[columnMap[field.key]];
         
@@ -287,11 +258,9 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       }
     });
 
+    // 💡 重要修改：這裡不再包含 status, route, area。這三個屬性交由 sync-engine.js 根據設定與類別來決定。
     parsedOrders.push({
       id: orderId,
-      status: status,
-      route: route,
-      area: area,
       salesReps: normalizedReps,
       supplierName: supplierName,
       uploadDate: uploadDate,
@@ -364,6 +333,6 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1794188600
+V: 1794189000
 W: UPGRADE-009
 ═══ */
