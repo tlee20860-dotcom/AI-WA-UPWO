@@ -43,6 +43,16 @@ export function formatExcelDate(val) {
 }
 
 /**
+ * 將數字轉為帶有千分位與貨幣符號的字串
+ */
+export function formatCurrency(val) {
+  if (val === undefined || val === null || val === '') return "";
+  const num = Number(val);
+  if (isNaN(num)) return String(val);
+  return '$' + num.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+/**
  * 取得工單類別
  */
 function getOrderCategory(order) {
@@ -170,12 +180,18 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
 
   // 4. 處理排序與全域篩選
   if (state.sortKey) {
-    // 尋找排序欄位的定義，以判斷是否為日期
     const sortFieldDef = displayFields.find(f => f.key === state.sortKey) || { key: state.sortKey };
     
     cleanOrders.sort((a, b) => {
       let valA = getOrderValue(a, sortFieldDef);
       let valB = getOrderValue(b, sortFieldDef);
+      
+      // 移除貨幣符號與逗號進行數值排序
+      if (sortFieldDef.type === 'currency' || sortFieldDef.type === 'number') {
+        valA = Number(String(valA).replace(/[\$,]/g, '')) || 0;
+        valB = Number(String(valB).replace(/[\$,]/g, '')) || 0;
+      }
+      
       return (valA < valB ? -1 : 1) * (state.sortOrder === 'asc' ? 1 : -1);
     });
   }
@@ -469,7 +485,7 @@ export function renderOrderView({ containerId, orders, visibleFields = [], isAdm
 }
 
 /**
- * 取得欄位值 (處理巢狀 data 與日期格式防呆)
+ * 取得欄位值 (處理巢狀 data 與日期/金額格式防呆)
  * @param {Object} order 工單物件
  * @param {Object|string} field 欄位定義物件或欄位 key 字串
  * @returns {any} 欄位值
@@ -496,9 +512,14 @@ function getOrderValue(order, field) {
     val = order[key] !== undefined ? order[key] : '';
   }
 
-  // 日期格式化防呆：若為 date 類型，或已知的核心日期欄位，強制格式化
+  // 日期格式化防呆
   if (type === 'date' || key === 'uploadDate' || key === 'dueDate' || key === 'statusUpdateDate') {
     return formatExcelDate(val);
+  }
+  
+  // 金額格式化防呆
+  if (type === 'currency') {
+    return formatCurrency(val);
   }
 
   return val;
@@ -506,6 +527,6 @@ function getOrderValue(order, field) {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-view.js
-V: 1794188000
+V: 1794188900
 W: UPGRADE-009
 ═══ */
