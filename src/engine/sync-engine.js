@@ -178,7 +178,7 @@ export async function syncFromBuffer(buffer = currentFile) {
       console.warn('[Sync Engine] 無法取得 settings', err);
     }
 
-    // 第一次解析：主要目的是取得所有 Excel 表頭 (allFoundHeaders)
+    // 第一次解析
     let result = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
     let parsed = result.parsedOrders;
     let allFoundHeaders = result.allFoundHeaders;
@@ -187,8 +187,19 @@ export async function syncFromBuffer(buffer = currentFile) {
     let newFieldsAdded = 0;
     let updatedViewConfigs = { ...viewConfig };
     
-    // 核心欄位與既有系統保留字，不需重複新增
-    const coreAliases = ['工單號碼', '單號', '發票', 'id', '登錄', '狀態', '生產進度', 'status', '製程路線', '製程路線圖管理', 'route', '區域', 'area', '交貨日期', '交貨日', '預計日期', 'dueDate', '上傳日期', '開單日期', '日期', 'uploadDate', '銷售員', 'salesRep', 'salesReps', '我方備考', 'SALES編號', 'SALES', '來源', 'source', '外發商', '工單類別/外發商', '供應商', '外發廠商', '類別', 'category', '工單類別'];
+    // 💡 強化黑名單：這些欄位由網頁控制，不允許從 Excel 自動新增
+    const coreAliases = [
+      '工單號碼', '單號', '發票', 'id', '登錄', 
+      '狀態', '生產進度', 'status', 
+      '製程路線', '製程路線圖管理', 'route', 
+      '區域', 'area', 
+      '交貨日期', '交貨日', '預計日期', 'dueDate', 
+      '上傳日期', '開單日期', '日期', 'uploadDate', 
+      '銷售員', 'salesRep', 'salesReps', '我方備考', 'SALES編號', 'SALES', 
+      '來源', 'source', 
+      '外發商', '工單類別/外發商', '供應商', '外發廠商', 
+      '類別', 'category', '工單類別'
+    ];
     
     const existingLabels = schema.map(f => f.label);
     
@@ -196,7 +207,6 @@ export async function syncFromBuffer(buffer = currentFile) {
       if (!existingLabels.includes(header) && !coreAliases.includes(header)) {
         const key = 'field_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
         
-        // 根據表頭關鍵字猜測類型
         let guessedType = 'string';
         if (header.includes('金額') || header.includes('價格') || header.includes('單價') || header.includes('費用') || header.includes('COST')) {
           guessedType = 'currency';
@@ -214,7 +224,6 @@ export async function syncFromBuffer(buffer = currentFile) {
           isEditable: true
         });
         
-        // 自動加入所有頁面的視圖配置
         Object.keys(updatedViewConfigs).forEach(page => {
           if (!updatedViewConfigs[page].includes(key)) {
             updatedViewConfigs[page].push(key);
@@ -226,14 +235,12 @@ export async function syncFromBuffer(buffer = currentFile) {
     });
 
     if (newFieldsAdded > 0) {
-      // 儲存新的 Schema 與 ViewConfig
       await updateDocument('settings', 'main', {
         schema: schema,
         view_configs: updatedViewConfigs
       });
       showToast(`已自動新增 ${newFieldsAdded} 個 Excel 欄位`, 'info');
       
-      // 因為 Schema 更新了，重新解析一次，確保第一次匯入就能抓到新欄位的值
       result = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
       parsed = result.parsedOrders;
     }
@@ -246,16 +253,14 @@ export async function syncFromBuffer(buffer = currentFile) {
       
       const existing = await getDocument('work_orders', order.id);
       if (existing) {
+        // 檢查資料是否有變更 (僅比對 data, salesReps, uploadDate)
         const hasChanged = JSON.stringify(existing.data) !== JSON.stringify(order.data) ||
-                           existing.status !== order.status ||
-                           JSON.stringify(existing.route) !== JSON.stringify(order.route) ||
-                           existing.area !== order.area;
+                           JSON.stringify(existing.salesReps) !== JSON.stringify(order.salesReps) ||
+                           existing.uploadDate !== order.uploadDate;
                            
         if (hasChanged) {
+          // 💡 核心防呆：只更新 Excel 負責的欄位，絕不覆蓋 status, route, area
           await updateDocument('work_orders', order.id, { 
-            status: order.status,
-            route: order.route,
-            area: order.area,
             salesReps: order.salesReps, 
             uploadDate: order.uploadDate,
             data: order.data 
@@ -263,6 +268,7 @@ export async function syncFromBuffer(buffer = currentFile) {
           updated++;
         }
       } else {
+        // 新工單：由網頁邏輯根據類別分配路線與狀態
         const orderCategory = String(order.data?.category || '其他').toUpperCase().trim();
         let matchedTemplate = routeTemplates.find(t => {
           if (t.categories && Array.isArray(t.categories) && t.categories.length > 0) {
@@ -278,19 +284,25 @@ export async function syncFromBuffer(buffer = currentFile) {
           matchedTemplate = routeTemplates.find(t => (!t.categories || t.categories.length === 0) && (!t.category || t.category.trim() === ''));
         }
 
-        if (!order.route || order.route.length === 0) {
-          if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
-            order.route = matchedTemplate.steps.slice();
-            order.status = matchedTemplate.steps[0];
-          } else {
-            order.route = statuses.slice();
-            order.status = statuses[0];
-          }
+        let initialRoute = [];
+        let initialStatus = statuses[0];
+
+        if (matchedTemplate && matchedTemplate.steps && matchedTemplate.steps.length > 0) {
+          initialRoute = matchedTemplate.steps.slice();
+          initialStatus = matchedTemplate.steps[0];
+        } else {
+          initialRoute = statuses.slice();
         }
 
         if (!order.source) order.source = 'excel';
 
-        await setDocument('work_orders', order.id, order);
+        // 寫入完整資料
+        await setDocument('work_orders', order.id, {
+          ...order,
+          route: initialRoute,
+          status: initialStatus,
+          area: '' // 預設無區域
+        });
         added++;
       }
     }
@@ -332,6 +344,6 @@ export async function downloadLatestExcel() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794188700
+V: 1794189100
 W: UPGRADE-009
 ═══ */
