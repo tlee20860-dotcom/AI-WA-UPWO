@@ -41,7 +41,6 @@ export function initSyncEngine() {
   }
 }
 
-// 新增：解除綁定功能
 export function clearBinding() {
   currentFile = null;
   targetFileName = '';
@@ -68,7 +67,6 @@ export function handleExcelUpload(file) {
       const buffer = evt.target.result;
       const workbook = XLSX.read(buffer, { type: 'array' });
       
-      // 只要檔案有選擇，一律跳出設定視窗，讓使用者重新確認分頁與月份
       showSetupModal(file.name, workbook.SheetNames, buffer);
     } catch (err) {
       console.error('[Sync Engine] 解析檔案失敗', err);
@@ -165,6 +163,7 @@ export async function syncFromBuffer(buffer = currentFile) {
     let salesMapping = [], statuses = AppState.getStatuses() || ['排產中'];
     let schema = [];
     let routeTemplates = [];
+    let viewConfig = {};
     
     try {
       const s = await getDocument('settings', 'main');
@@ -173,12 +172,73 @@ export async function syncFromBuffer(buffer = currentFile) {
         statuses = s.statuses || statuses; 
         schema = s.schema || []; 
         routeTemplates = s.route_templates || [];
+        viewConfig = s.view_configs || {};
       }
     } catch (err) {
       console.warn('[Sync Engine] 無法取得 settings', err);
     }
 
-    const parsed = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
+    // 第一次解析：主要目的是取得所有 Excel 表頭 (allFoundHeaders)
+    let result = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
+    let parsed = result.parsedOrders;
+    let allFoundHeaders = result.allFoundHeaders;
+
+    // --- 自動新增缺失的欄位 ---
+    let newFieldsAdded = 0;
+    let updatedViewConfigs = { ...viewConfig };
+    
+    // 核心欄位與既有系統保留字，不需重複新增
+    const coreAliases = ['工單號碼', '單號', '發票', 'id', '登錄', '狀態', '生產進度', 'status', '製程路線', '製程路線圖管理', 'route', '區域', 'area', '交貨日期', '交貨日', '預計日期', 'dueDate', '上傳日期', '開單日期', '日期', 'uploadDate', '銷售員', 'salesRep', 'salesReps', '我方備考', 'SALES編號', 'SALES', '來源', 'source', '外發商', '工單類別/外發商', '供應商', '外發廠商', '類別', 'category', '工單類別'];
+    
+    const existingLabels = schema.map(f => f.label);
+    
+    allFoundHeaders.forEach(header => {
+      if (!existingLabels.includes(header) && !coreAliases.includes(header)) {
+        const key = 'field_' + Date.now().toString(36) + Math.random().toString(36).substring(2, 5);
+        
+        // 根據表頭關鍵字猜測類型
+        let guessedType = 'string';
+        if (header.includes('金額') || header.includes('價格') || header.includes('單價') || header.includes('費用') || header.includes('COST')) {
+          guessedType = 'currency';
+        } else if (header.includes('日期') || header.includes('日')) {
+          guessedType = 'date';
+        } else if (header.includes('數量') || header.includes('數')) {
+          guessedType = 'number';
+        }
+
+        schema.push({
+          key: key,
+          label: header,
+          type: guessedType,
+          isSystem: false,
+          isEditable: true
+        });
+        
+        // 自動加入所有頁面的視圖配置
+        Object.keys(updatedViewConfigs).forEach(page => {
+          if (!updatedViewConfigs[page].includes(key)) {
+            updatedViewConfigs[page].push(key);
+          }
+        });
+        
+        newFieldsAdded++;
+      }
+    });
+
+    if (newFieldsAdded > 0) {
+      // 儲存新的 Schema 與 ViewConfig
+      await updateDocument('settings', 'main', {
+        schema: schema,
+        view_configs: updatedViewConfigs
+      });
+      showToast(`已自動新增 ${newFieldsAdded} 個 Excel 欄位`, 'info');
+      
+      // 因為 Schema 更新了，重新解析一次，確保第一次匯入就能抓到新欄位的值
+      result = parseWorkbook(workbook, selectedSheets, salesMapping, statuses[0], schema, targetMonth);
+      parsed = result.parsedOrders;
+    }
+    // ---------------------------------
+
     let added = 0, updated = 0;
 
     for (const order of parsed) {
@@ -272,6 +332,6 @@ export async function downloadLatestExcel() {
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/engine/sync-engine.js
-V: 1794188100
+V: 1794188700
 W: UPGRADE-009
 ═══ */
