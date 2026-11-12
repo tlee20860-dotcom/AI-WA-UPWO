@@ -74,6 +74,21 @@ function formatExcelDate(val) {
 }
 
 /**
+ * 將金額字串清理為純數字（去除 $ 與逗號）
+ * @param {any} val 原始數值或字串
+ * @returns {number} 轉換後的數字
+ */
+function parseCurrency(val) {
+  if (val === undefined || val === null || val === '') return 0;
+  if (typeof val === 'number') return val;
+  
+  // 移除貨幣符號、千分位逗號與空白
+  const cleanStr = String(val).replace(/[\$,]/g, '').trim();
+  const num = Number(cleanStr);
+  return isNaN(num) ? 0 : num;
+}
+
+/**
  * 解析 Excel 匯入的資料列（自動偵測表頭 + 動態 Schema）
  * @param {Array<string>} headers Excel 第一列的標題 (可能不是真正的表頭)
  * @param {Array<Array<any>>} rows Excel 的資料列（不含第一列）
@@ -81,11 +96,12 @@ function formatExcelDate(val) {
  * @param {string} defaultStatus 預設狀態 (如 "排產中")
  * @param {Array} schema 系統欄位定義
  * @param {string} targetMonth 指定過濾的月份 (格式 YYYY-MM，若為空則不篩選)
- * @returns {Array<Object>} 標準化後的工單物件陣列
+ * @returns {Object} 包含 parsedOrders (解析後的工單陣列) 與 foundHeaders (所有出現的表頭)
  */
 export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排產中", schema = [], targetMonth = "") {
   const nowStr = new Date().toISOString();
   const parsedOrders = [];
+  let foundHeaders = [];
 
   const allData = [headers, ...rows];
 
@@ -103,7 +119,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   }
 
   if (headerIdx === -1) {
-    return [];
+    return { parsedOrders: [], foundHeaders: [] };
   }
 
   const actualHeaders = allData[headerIdx];
@@ -112,6 +128,9 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   // 2. 建立表頭索引映射：強制清洗表頭的空白、換行與全形空白
   const cleanStr = (s) => String(s || '').replace(/[\s\u3000]+/g, '').trim();
   const cleanHeaders = actualHeaders.map(cleanStr);
+
+  // 收集所有非空的表頭，供外層自動新增欄位使用
+  foundHeaders = Array.from(new Set(cleanHeaders.filter(h => h !== '')));
 
   const columnMap = {};
   schema.forEach(field => {
@@ -153,7 +172,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
   }
 
   if (idIdx === undefined) {
-    return [];
+    return { parsedOrders: [], foundHeaders };
   }
 
   // 3. 逐列解析
@@ -169,14 +188,14 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
 
     // --- 解析核心欄位 ---
     
-    // 上傳/開單日期 (uploadDate) - 先解析出來，因為要用來比對月份
+    // 上傳/開單日期 (uploadDate)
     let uploadDate = nowStr.split('T')[0];
     if (coreIndices['uploadDate'] !== undefined && row[coreIndices['uploadDate']] !== undefined) {
       const formatted = formatExcelDate(row[coreIndices['uploadDate']]);
       if (formatted) uploadDate = formatted;
     }
 
-    // 月份過濾防呆：若有指定月份，且開單日期不符合，則跳過該筆
+    // 月份過濾防呆
     if (targetMonth && !uploadDate.startsWith(targetMonth)) {
       continue;
     }
@@ -258,9 +277,10 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
       if (!field.isSystem && !isCoreHandled && columnMap[field.key] !== undefined) {
         let val = row[columnMap[field.key]];
         
-        // 💡 防呆：若該自訂欄位被定義為 date 類型，強制轉換為標準日期格式
         if (field.type === 'date' && val !== undefined && val !== null && val !== '') {
           val = formatExcelDate(val);
+        } else if (field.type === 'currency') {
+          val = parseCurrency(val);
         }
         
         data[field.key] = val !== undefined && val !== null ? val : "";
@@ -282,7 +302,7 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
     });
   }
 
-  return parsedOrders;
+  return { parsedOrders, foundHeaders };
 }
 
 /**
@@ -293,10 +313,11 @@ export function parseExcelData(headers, rows, salesMapping, defaultStatus = "排
  * @param {string} defaultStatus 預設狀態
  * @param {Array} schema 系統欄位定義
  * @param {string} targetMonth 指定過濾的月份 (格式 YYYY-MM)
- * @returns {Array<Object>} 合併後的工單物件陣列
+ * @returns {Object} 包含 parsedOrders (合併後的工單) 與 allFoundHeaders (所有表頭)
  */
 export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, defaultStatus, schema, targetMonth = "") {
   const allParsedOrders = [];
+  const allFoundHeadersSet = new Set();
   const sheetsToParse = targetSheetNames.length > 0 ? targetSheetNames : workbook.SheetNames;
 
   for (const sheetName of sheetsToParse) {
@@ -307,7 +328,7 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
 
     if (jsonData.length === 0) continue;
 
-    const parsed = parseExcelData(
+    const { parsedOrders, foundHeaders } = parseExcelData(
       jsonData[0], 
       jsonData.slice(1), 
       salesMapping, 
@@ -316,9 +337,11 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
       targetMonth
     );
 
-    if (parsed.length > 0) {
-      allParsedOrders.push(...parsed);
+    if (parsedOrders.length > 0) {
+      allParsedOrders.push(...parsedOrders);
     }
+    
+    foundHeaders.forEach(h => allFoundHeadersSet.add(h));
   }
 
   // 去除重複單號
@@ -333,11 +356,14 @@ export function parseWorkbook(workbook, targetSheetNames = [], salesMapping, def
     }
   }
 
-  return uniqueOrders;
+  return { 
+    parsedOrders: uniqueOrders, 
+    allFoundHeaders: Array.from(allFoundHeadersSet) 
+  };
 }
 
 /* ═══ EOF ═══
 F: AI-WA-UPWO/src/domain/parser.js
-V: 1794188400
+V: 1794188600
 W: UPGRADE-009
 ═══ */
