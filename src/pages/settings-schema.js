@@ -30,6 +30,7 @@ export function renderSchema(container, currentSettings, saveSettings) {
         <select id="new-field-type" class="w-full sm:w-48 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm focus:outline-none">
           <option value="string">文字輸入</option>
           <option value="number">數字輸入</option>
+          <option value="currency">💰 金額輸入</option>
           <option value="date">日期輸入</option>
           <option value="relation">🔗 關聯資料庫 (下拉)</option>
         </select>
@@ -72,7 +73,7 @@ export function renderSchema(container, currentSettings, saveSettings) {
         const relDb = isRel ? dbs.find(d => d.id === f.db_id) : null;
         const typeLabel = isRel 
           ? `🔗 關聯：${relDb ? relDb.name : '未知資料庫'}` 
-          : (f.type === 'date' ? '日期' : f.type === 'number' ? '數字' : '文字');
+          : (f.type === 'currency' ? '金額' : (f.type === 'date' ? '日期' : f.type === 'number' ? '數字' : '文字'));
 
         return `
         <div class="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 shadow-sm">
@@ -240,7 +241,7 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
           ${visibleSchema.map(f => `
             <div class="flex items-center gap-3 bg-slate-50 p-3 rounded-xl border border-slate-200 cursor-grab visible-item" draggable="true" data-key="${f.key}">
               <i data-lucide="grip-vertical" class="w-5 h-5 text-slate-300"></i>
-              <span class="flex-1 font-medium text-slate-700">${f.label} ${f.type === 'relation' ? '🔗' : ''}</span>
+              <span class="flex-1 font-medium text-slate-700">${f.label} ${f.type === 'relation' ? '🔗' : (f.type === 'currency' ? '💰' : '')}</span>
               <button class="p-1 text-slate-400 hover:text-rose-500 btn-remove-field" data-key="${f.key}">
                 <i data-lucide="x" class="w-4 h-4"></i>
               </button>
@@ -258,7 +259,7 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
           ${hiddenSchema.length === 0 ? '<div class="text-slate-400 text-sm text-center py-8">所有欄位已顯示</div>' : ''}
           ${hiddenSchema.map(f => `
             <div class="flex items-center gap-3 bg-white p-3 rounded-xl border border-slate-100 shadow-sm cursor-pointer hover:border-brand transition-colors hidden-item" data-key="${f.key}">
-              <span class="flex-1 font-medium text-slate-600">${f.label} ${f.type === 'relation' ? '🔗' : ''}</span>
+              <span class="flex-1 font-medium text-slate-600">${f.label} ${f.type === 'relation' ? '🔗' : (f.type === 'currency' ? '💰' : '')}</span>
               <i data-lucide="plus" class="w-4 h-4 text-slate-400"></i>
             </div>
           `).join('')}
@@ -332,8 +333,8 @@ export function renderViewConfig(container, currentSettings, saveSettings) {
   }
 }
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/pages/settings-schema.js
-V: 1793082000
-W: UPGRADE-007
-*/
+V: 1794188500
+W: UPGRADE-009
+═══ */
