@@ -21,7 +21,7 @@ export function renderOrderEditor({
   formulas, 
   viewConfig, 
   routeTemplates = [],
-  customDatabases = [], // 💡 接收自訂資料庫
+  customDatabases = [],
   layoutMode = 'B', 
   initialData = null, 
   isViewMode = false,
@@ -110,13 +110,11 @@ export function renderOrderEditor({
               `;
             }
 
-            // 2. 💡 處理關聯資料庫 (relation)
+            // 2. 處理關聯資料庫 (relation)
             if (f.type === 'relation') {
               const targetDb = customDatabases.find(db => db.id === f.db_id);
               const items = targetDb ? targetDb.items : [];
               
-              // 處理舊資料可能是存 name 而不是 id 的情況
-              const isIdMatch = items.some(item => item.id === value);
               const selectedItem = items.find(item => item.id === value || item.name === value);
               const selectedValue = selectedItem ? selectedItem.id : value;
 
@@ -132,7 +130,22 @@ export function renderOrderEditor({
               `;
             }
 
-            // 3. 一般欄位渲染
+            // 3. 處理金額欄位 (currency)
+            if (f.type === 'currency') {
+              return `
+                <div class="flex flex-col gap-1.5">
+                  <label class="text-sm font-medium text-slate-700">${f.label}</label>
+                  <div class="relative">
+                    <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-500 font-bold">
+                      $
+                    </div>
+                    <input type="number" step="0.01" data-key="${f.key}" value="${value}" class="${baseClass} pl-8" placeholder="0.00" ${disabledAttr}>
+                  </div>
+                </div>
+              `;
+            }
+
+            // 4. 一般欄位渲染 (包含 date, number, string)
             const inputType = f.type === 'date' ? 'date' : (f.type === 'number' ? 'number' : 'text');
             return `
               <div class="flex flex-col gap-1.5">
@@ -223,10 +236,6 @@ export function renderOrderEditor({
         
         let val = formData[f.key];
         
-        // 如果是關聯欄位，我們儲存 ID。但為了讓匯出顯示名稱，我們可以額外存一個 map 或是保留原本的字串？
-        // 為了架構單純，這裡依然存 ID。若要顯示名稱，由 UI 讀取 customDatabases 轉換。
-        // 但為了向下相容舊的 supplierName (存 name)，這裡不強制轉換，直接存 val。
-        
         if (f.isSystem) {
           finalData[f.key] = val;
         } else {
@@ -239,8 +248,8 @@ export function renderOrderEditor({
   });
 }
 
-/*
+/* ═══ EOF ═══
 F: AI-WA-UPWO/src/ui/order-editor.js
-V: 1793084000
-W: UPGRADE-007
-*/
+V: 1794188800
+W: UPGRADE-009
+═══ */
